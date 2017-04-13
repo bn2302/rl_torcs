@@ -52,10 +52,15 @@ RUN git clone https://github.com/ugo-nama-kun/gym_torcs && \
     cd /root
 
 
-COPY start.sh /root/gym_torcs
-RUN chmod +x /root/gym_torcs/start.sh
+COPY start_torcs.sh /usr/local/bin
+RUN chmod +x /usr/local/bin/start_torcs.sh
 
-COPY practice.xml /root/gym_torcs/practice.xml
+COPY kill_torcs.sh /usr/local/bin
+RUN chmod +x /usr/local/bin/kill_torcs.sh
+
+# set to no sound
+COPY sound.xml /usr/local/share/games/torcs/config
+
 
 WORKDIR "/root/gym_torcs"
 CMD ["/bin/bash"]

@@ -1,6 +1,7 @@
 from collections import deque
 import random
 
+
 class ReplayBuffer(object):
 
     def __init__(self, buffer_size):

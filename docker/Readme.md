@@ -1,7 +1,7 @@
 # Build the image
 put in build command
 
-	docker build -t bn2302/torcs:gpu -f Dockerfile.gpu .
+	docker build -t bn2302/torcs:gpu -f Dockerfile .
 
 # Test the image
 Run in 
