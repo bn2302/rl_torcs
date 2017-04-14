@@ -1,6 +1,6 @@
 from gym import spaces
 import os
-
+import time
 import collections as col
 import numpy as np
 import snakeoil3_gym as snakeoil3
@@ -13,19 +13,22 @@ class TorcsDockerEnv(object):
        input
     '''
 
-    def __init__(self, docker_client, name, port,
-                 docker_id='bn2302/torcs:gpu'):
+    def __init__(self, docker_client, name, port_offset=0,
+                 docker_id='bn2302/torcs'):
 
         self.terminal_judge_start = 100
         self.termination_limit_progress = 5
         self.default_speed = 50
         self.initial_reset = True
 
-        self.docker_client = docker_client
         self.name = name
-        self.port = port
+        self.docker_client = docker_client
+        self.port_offset = port_offset
         self.docker_id = docker_id
         self.container = self._start_docker()
+        self.container.exec_run("vncserver $DISPLAY")
+
+        time.sleep(1)
         self.container.exec_run("start_torcs.sh", detach=True)
 
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,))
@@ -36,15 +39,15 @@ class TorcsDockerEnv(object):
         self.observation_space = spaces.Box(low=low, high=high)
 
     def _start_docker(self):
-        os.system(('xhost + ;'
-                   + 'nvidia-docker run'
-                   + ' --name {}'.format(self.name)
-                   + ' -it'
-                   + ' -p {}:3101/udp'.format(self.port)
-                   + ' --device=/dev/snd:/dev/snd'
-                   + ' -v /tmp/.X11-unix:/tmp/.X11-unix:ro'
-                   + ' -e DISPLAY=unix$DISPLAY'
-                   + ' -d {}'.format(self.docker_id)))
+        os.system('xhost +; nvidia-docker run' +
+                  ' -it -d' +
+                  ' --volume="/tmp/.X11-unix/X0:/tmp/.X11-unix/X0:rw"' +
+                  ' --volume="/usr/lib/x86_64-linux-gnu/libXv.so.1:/usr/lib/x86_64-linux-gnu/libXv.so.1"' +
+                  ' -p {:d}:3101/udp'.format(3101 + self.port_offset) +
+                  ' -p {:d}:5801'.format(5801 + self.port_offset) +
+                  ' -p {:d}:5901'.format(5901 + self.port_offset) +
+                  ' --name={}'.format(self.name) +
+                  ' {}'.format(self.docker_id))
 
         return self.docker_client.containers.get(self.name)
 
@@ -60,7 +63,7 @@ class TorcsDockerEnv(object):
                 self.container.exec_run("kill_torcs.sh", detach=True)
                 self.container.exec_run("start_torcs.sh", detach=True)
 
-        self.client = snakeoil3.Client(p=self.port)
+        self.client = snakeoil3.Client(p=3101 + self.port_offset)
 
         self.client.MAX_STEPS = np.inf
 
@@ -182,3 +185,12 @@ class TorcsDockerEnv(object):
         g = np.array(g).reshape(sz)
         b = np.array(b).reshape(sz)
         return np.array([r, g, b], dtype=np.uint8)
+
+
+if __name__ == '__main__':
+    import docker
+
+    docker_client = docker.from_env()
+    # Generate a Torcs environment
+    env = TorcsDockerEnv(docker_client, "worker", 0)
+    env.reset(True)

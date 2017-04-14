@@ -1,14 +1,13 @@
-FROM nvidia/cuda:8.0-runtime
+FROM bn2302/turbovnc
 
 MAINTAINER Bastian Niebel  <bastian.niebel@gmail.com>
+
 
 RUN apt-get update && apt-get install -y \
     libglib2.0-dev \
     libgl1-mesa-dev \
-    libglu1-mesa-dev \
     libpng12-dev \
     git \
-    wget \
     freeglut3-dev \
     libplib-dev \
     libopenal-dev \
@@ -24,32 +23,26 @@ RUN apt-get update && apt-get install -y \
     make \
     patch \
     xautomation  \
-    python3-numpy \
-    python3-scipy  \
-    python3-dev \
-    python3-nose \
-    python3-h5py  \
     libopenblas-dev \
-    cmake \
     zlib1g-dev \
     libjpeg-dev \
     xvfb \
     libav-tools \
     xorg-dev \
-    python3-opengl \
     libboost-all-dev \
     libsdl2-dev \
     swig
 
-WORKDIR "/root"
 
+WORKDIR "/root"
 RUN git clone https://github.com/ugo-nama-kun/gym_torcs && \
     cd gym_torcs/vtorcs-RL-color && \
     ./configure && \
     make && \
     make install && \
     make datainstall && \
-    cd /root
+    cd /root && \
+    rm -r gym_torcs
 
 
 COPY start_torcs.sh /usr/local/bin
@@ -61,6 +54,4 @@ RUN chmod +x /usr/local/bin/kill_torcs.sh
 # set to no sound
 COPY sound.xml /usr/local/share/games/torcs/config
 
-
-WORKDIR "/root/gym_torcs"
 CMD ["/bin/bash"]

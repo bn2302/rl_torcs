@@ -329,7 +329,7 @@ class ServerState():
         sensors = [  # Select the ones you want in the order you want them.
             # 'curLapTime',
             # 'lastLapTime',
-            'stucktimer',
+            # 'stucktimer',
             # 'damage',
             # 'focus',
             'fuel',
@@ -343,7 +343,7 @@ class ServerState():
             'speedZ',
             'speedY',
             'speedX',
-            'targetSpeed',
+            # 'targetSpeed',
             'rpm',
             'skid',
             'slip',
@@ -609,6 +609,8 @@ def drive_example(c):
 # ================ MAIN ================
 if __name__ == "__main__":
     C = Client(p=3101)
+    C.debug = True
+    C.maxSteps = 1000
     for step in range(C.maxSteps, 0, -1):
         C.get_servers_input()
         drive_example(C)

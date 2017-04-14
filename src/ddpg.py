@@ -1,4 +1,3 @@
-import json
 import docker
 
 from ActorNetwork import ActorNetwork
@@ -47,7 +46,7 @@ def playGame(train_indicator=1):
     docker_client = docker.from_env()
 
     # Generate a Torcs environment
-    env = TorcsDockerEnv(docker_client, "worker", 3101)
+    env = TorcsDockerEnv(docker_client, 0)
 
     # Now load the weight
     try:

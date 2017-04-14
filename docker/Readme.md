@@ -1,7 +1,19 @@
 # Build the image
 put in build command
 
-	docker build -t bn2302/torcs:gpu -f Dockerfile .
+	docker build -t bn2302/turbovnc -f TurboVNC.Dockerfile .
+	docker build -t bn2302/torcs -f Torcs.Dockerfile .
+
+# 
+
+	nvidia-docker run \
+		--volume="/tmp/.X11-unix/X0:/tmp/.X11-unix/X0:rw" 
+		--volume="/usr/lib/x86_64-linux-gnu/libXv.so.1:/usr/lib/x86_64-linux-gnu/libXv.so.1" \
+		-p 3101:3101/udp \ 
+		-p 5901:5901 \
+		-p 5801:5801 \
+		-ti -rm \
+		bn2302/torcs
 
 # Test the image
 Run in 

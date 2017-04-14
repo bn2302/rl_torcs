@@ -1,6 +1,6 @@
 #!/bin/bash
 
-torcs -nofuel -nodamage -nolaptime -vision &
+vglrun torcs -nofuel -nodamage -nolaptime -vision &
 
 sleep 0.5
 
