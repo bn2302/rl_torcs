@@ -23,8 +23,8 @@ class ActorNetwork(object):
         # Now create the model
         self.model, self.weights, self.state = self.create_actor_network(
             state_size, action_size)
-        self.target_model, self.target_weights, self.target_state = self.create_actor_network(
-            state_size, action_size)
+        self.target_model, self.target_weights, self.target_state = \
+            self.create_actor_network(state_size, action_size)
         self.action_gradient = tf.placeholder(tf.float32, [None, action_size])
         self.params_grad = tf.gradients(
             self.model.output, self.weights, -self.action_gradient)
@@ -54,8 +54,9 @@ class ActorNetwork(object):
         h1 = Dense(HIDDEN2_UNITS, activation='relu')(h0)
         Steering = Dense(1, activation='tanh', init=lambda shape,
                          name: normal(shape, scale=1e-4, name=name))(h1)
-        Acceleration = Dense(1, activation='sigmoid', init=lambda shape, name: normal(
-            shape, scale=1e-4, name=name))(h1)
+        Acceleration = Dense(1, activation='sigmoid',
+                             init=lambda shape, name: normal(
+                                 shape, scale=1e-4, name=name))(h1)
         Brake = Dense(1, activation='sigmoid', init=lambda shape,
                       name: normal(shape, scale=1e-4, name=name))(h1)
         V = merge([Steering, Acceleration, Brake], mode='concat')
