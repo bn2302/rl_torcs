@@ -15,8 +15,8 @@ put in build command
 		-ti -rm \
 		bn2302/torcs
 
+	nvidia-docker run -it -v /var/run/docker.sock:/var/run/docker.sock -v /usr/bin/nvidia-modprobe:/usr/bin/nvidia-modprobe -m=10G --net=host --rm bn2302/rl_tf
 
- nvidia-docker run -it -v /var/run/docker.sock:/var/run/docker.sock -v /usr/bin/nvidia-modprobe:/usr/bin/nvidia-modprobe -m=10G -p 8888:8888 -p 6006:6006 bn2302/rl_tf
 # Test the image
 Run in 
 

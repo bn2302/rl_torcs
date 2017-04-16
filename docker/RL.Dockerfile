@@ -8,10 +8,13 @@ RUN apt update && apt install -y --no-install-recommends \
 	apt-transport-https \ 
 	aufs-tools \
         git  \ 
-	wget
+	wget \
+	cmake \
+	build-essential \
+	vim 
 
 # docker
-RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add - 
+RUN curl -fsSL "https://download.docker.com/linux/ubuntu/gpg" | apt-key add - 
 RUN add-apt-repository \
    "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
    $(lsb_r\elease -cs) \
@@ -23,7 +26,22 @@ RUN pip3 install docker
 RUN wget -P /tmp https://github.com/NVIDIA/nvidia-docker/releases/download/v1.0.1/nvidia-docker_1.0.1-1_amd64.deb && \
 	dpkg -i /tmp/nvidia-docker*.deb && rm /tmp/nvidia-docker*.deb
 
-EXPOSE 3101-3199/udp
+RUN git clone https://github.com/openai/gym.git && \
+    cd gym && \
+    pip3 install -e .
+
+RUN git clone https://github.com/VundleVim/Vundle.vim.git ~/.vim/bundle/Vundle.vim
+
+
+COPY vimrc1 /root/.vimrc
+RUN vim +PluginInstall +qall
+RUN cd /root/.vim/bundle/YouCompleteMe && python3 install.py && cd /root
+
+COPY vimrc /root/.vimrc
+
+RUN pip3 install flake8 pylint pyflakes pytest seaborn
+
+WORKDIR "/workdir"
 
 CMD ["/bin/bash"]
-
+#CMD ["/run_jupyter.sh", "--allow-root"]

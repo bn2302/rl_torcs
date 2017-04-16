@@ -1,0 +1,150 @@
+set nocompatible              " be iMproved, required
+filetype off                  " required
+
+" set the runtime path to include Vundle and initialize
+set rtp+=~/.vim/bundle/Vundle.vim
+call vundle#begin()
+Plugin 'VundleVim/Vundle.vim'
+Bundle 'ervandew/supertab'
+Bundle 'Valloric/YouCompleteMe'
+Plugin 'scrooloose/nerdcommenter'
+Plugin 'honza/vim-snippets'
+Plugin 'SirVer/ultisnips'
+Plugin 'scrooloose/nerdtree'
+Plugin 'jistr/vim-nerdtree-tabs'
+Plugin 'scrooloose/syntastic'
+Plugin 'jnurmine/Zenburn'
+Plugin 'moll/vim-bbye'
+Plugin 'vim-airline/vim-airline'
+Plugin 'vim-airline/vim-airline-themes'
+Plugin 'ctrlpvim/ctrlp.vim'
+Plugin 'majutsushi/tagbar'
+Plugin 'tmhedberg/SimpylFold'
+Plugin 'hynek/vim-python-pep8-indent'
+Plugin 'jlanzarotta/bufexplorer'
+Plugin 'alfredodeza/pytest.vim'
+call vundle#end()            " required
+
+filetype plugin indent on    " required
+
+set encoding=utf-8
+set clipboard=unnamed
+set nu " line numbering
+syntax on
+
+
+set spell spelllang=en_us
+
+set splitbelow
+
+colorscheme zenburn
+
+set cc=80
+
+
+au BufNewFile,BufRead *.py,*.pyx,*.pyd,*.f90,*.f,*.f03 set tabstop=4
+au BufNewFile,BufRead *.py,*.pyx,*.pyd,*.f90,*.f,*.f03 set softtabstop=4
+au BufNewFile,BufRead *.py,*.pyx,*.pyd,*.f90,*.f,*.f03 set shiftwidth=4
+au BufNewFile,BufRead *.c,*.h,*.cpp,*.cc,*.hpp set tabstop=2
+au BufNewFile,BufRead *.c,*.h,*.cpp,*.cc,*.hpp set softtabstop=2
+au BufNewFile,BufRead *.c,*.h,*.cpp,*.cc,*.hpp set shiftwidth=2
+au BufNewFile,BufRead *.py,*.pyx,*.pyd,*.f90,*.f,*.f03,*.c,*.h,*.cpp,*.cc,*.hpp set textwidth=79
+au BufNewFile,BufRead *.py,*.pyx,*.pyd,*.f90,*.f,*.f03,*.c,*.h,*.cpp,*.cc,*.hpp set expandtab
+au BufNewFile,BufRead *.py,*.pyx,*.pyd,*.f90,*.f,*.f03,*.c,*.h,*.cpp,*.cc,*.hpp setlocal smarttab
+au BufNewFile,BufRead *.py,*.pyx,*.pyd,*.f90,*.f,*.f03,*.c,*.h,*.cpp,*.cc,*.hpp set autoindent
+au BufNewFile,BufRead *.py,*.pyx,*.pyd,*.f90,*.f,*.f03,*.c,*.h,*.cpp,*.cc,*.hpp set fileformat=unix
+au BufWritePre *.py,*.pyx,*.pyd,*.f90,*.f,*.f03,*.c,*.h,*.cpp,*.cc,*.hpp normal m`:%s/\s\+$//e^M``
+
+au FileType make setlocal noexpandtab
+
+
+let python_highlight_all=1
+set list listchars=tab:»-,trail:·,extends:»,precedes:«
+
+let g:SimpylFold_docstring_preview=1
+nnoremap <space> za
+vnoremap <space> zf
+
+fixdel
+set backspace=indent,eol,start
+let mapleader = ","
+
+" Windowsplit related key binindg
+nnoremap <C-J> <C-W><C-J>
+nnoremap <C-K> <C-W><C-K>
+nnoremap <C-L> <C-W><C-L>
+nnoremap <C-H> <C-W><C-H>
+nnoremap <leader>q :Bdelete<CR>
+
+" resize
+nnoremap <silent> <Leader>+ :exe "vertical resize " . (winwidth(0) * 3/2)<CR>
+nnoremap <silent> <Leader>- :exe "vertical resize" . (winwidth(0) * 2/3)<CR>
+nnoremap <silent> <Leader>[ :exe "resize " . (winheight(0) * 3/2)<CR>
+nnoremap <silent> <Leader>] :exe "resize " . (winheight(0) * 2/3)<CR>noremap <C-K> <C-W><C-K>
+
+let g:nerdtree_tabs_open_on_gui_startup = 0
+let NERDTreeIgnore=['\.pyc$', '\~$'] "ignore files
+let g:nerdtree_open_cmd = 'start'
+nnoremap <C-n> :NERDTreeToggle<CR>
+"
+"Syntastic code checker
+set statusline+=%#warningmsg#
+set statusline+=%{SyntasticStatuslineFlag()}
+set statusline+=%*
+let g:syntastic_always_populate_loc_list = 1
+let g:syntastic_auto_loc_list = 0
+let g:syntastic_check_on_open = 1
+let g:syntastic_check_on_wq = 1
+let g:syntastic_python_checkers = ['flake8', 'pyflakes', 'pylint']
+let g:syntastic_loc_list_height=5
+let g:syntastic_python_python_exec = 'python3'
+
+nnoremap <Leader>f :YcmCompleter FixIt <CR>
+nnoremap <Leader>d :YcmCompleter GetDoc <CR>
+nnoremap <Leader>g :YcmCompleter GoTo <CR>
+
+let g:ycm_auto_trigger = 1
+let g:ycm_complete_in_comments = 1
+let g:ycm_collect_identifiers_from_comments_and_strings = 1
+let g:ycm_collect_identifiers_from_tags_files = 1
+let g:ycm_seed_identifiers_with_syntax = 1
+
+let g:ycm_confirm_extra_conf = 0
+set completeopt-=preview
+let g:ycm_add_preview_to_completeopt = 0
+
+let g:ycm_error_symbol = '!!'
+let g:ycm_warning_symbol = '>>'
+
+let g:ycm_path_to_python_interpreter = 'python3'
+let g:ycm_python_binary_path = 'python3'
+
+let g:ycm_key_list_select_completion = ['<C-n>', '<Down>']
+let g:ycm_key_list_previous_completion = ['<C-p>', '<Up>']
+let g:SuperTabDefaultCompletionType = '<C-n>'
+
+let g:UltiSnipsExpandTrigger = "<tab>"
+let g:UltiSnipsJumpForwardTrigger = "<tab>"
+let g:UltiSnipsJumpBackwardTrigger = "<s-tab>"
+let g:UltiSnipsListSnippets = "<c-tab>"
+
+let g:ultisnips_python_syle = "sphinx"
+let g:snips_author = "Bastian Niebel"
+let g:snips_email = "bastian.niebel@gmail.com"
+let g:snips_github = "https://github.com/bn2302"
+
+let g:airline#extensions#tabline#enabled = 1
+
+set laststatus=2
+
+nmap <F8> :TagbarToggle<CR>
+
+let g:NERDDefaultAlign = 'start'
+
+nnoremap <C-m> :BufExplorer<CR>
+
+nnoremap <leader>. :CtrlPBufTag<cr>
+
+nnoremap <leader>ev :vsplit $MYVIMRC<cr>
+nnoremap <leader>sv :source $MYVIMRC<cr>
+
