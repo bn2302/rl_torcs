@@ -54,4 +54,8 @@ RUN chmod +x /usr/local/bin/kill_torcs.sh
 # set to no sound
 COPY sound.xml /usr/local/share/games/torcs/config
 
+RUN echo 'exec vncserver&' >> ~/.bashrc
+
 CMD ["/bin/bash"]
+
+

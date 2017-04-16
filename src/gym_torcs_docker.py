@@ -13,7 +13,7 @@ class TorcsDockerEnv(object):
        input
     '''
 
-    def __init__(self, docker_client, name, port_offset=0,
+    def __init__(self, docker_client, name="torcs", port=3101,
                  docker_id='bn2302/torcs'):
 
         self.terminal_judge_start = 100
@@ -23,12 +23,9 @@ class TorcsDockerEnv(object):
 
         self.name = name
         self.docker_client = docker_client
-        self.port_offset = port_offset
+        self.port = port
         self.docker_id = docker_id
         self.container = self._start_docker()
-        self.container.exec_run("vncserver $DISPLAY")
-
-        time.sleep(1)
         self.container.exec_run("start_torcs.sh", detach=True)
 
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,))
@@ -39,15 +36,14 @@ class TorcsDockerEnv(object):
         self.observation_space = spaces.Box(low=low, high=high)
 
     def _start_docker(self):
-        os.system('xhost +; nvidia-docker run' +
-                  ' -it -d' +
-                  ' --volume="/tmp/.X11-unix/X0:/tmp/.X11-unix/X0:rw"' +
-                  ' --volume="/usr/lib/x86_64-linux-gnu/libXv.so.1:/usr/lib/x86_64-linux-gnu/libXv.so.1"' +
-                  ' -p {:d}:3101/udp'.format(3101 + self.port_offset) +
-                  ' -p {:d}:5801'.format(5801 + self.port_offset) +
-                  ' -p {:d}:5901'.format(5901 + self.port_offset) +
-                  ' --name={}'.format(self.name) +
-                  ' {}'.format(self.docker_id))
+        os.system('nvidia-docker run' +
+		    ' --rm' + 
+            ' -it' +
+            ' --volume="/tmp/.X11-unix/X0:/tmp/.X11-unix/X0:rw"' +
+            ' --volume="/usr/lib/x86_64-linux-gnu/libXv.so.1:/usr/lib/x86_64-linux-gnu/libXv.so.1:rw"' +
+            ' -p {:d}:3101/udp'.format(self.port) +
+            ' --name={}'.format(self.name) +
+            ' -d {}'.format(self.docker_id))
 
         return self.docker_client.containers.get(self.name)
 
@@ -63,7 +59,7 @@ class TorcsDockerEnv(object):
                 self.container.exec_run("kill_torcs.sh", detach=True)
                 self.container.exec_run("start_torcs.sh", detach=True)
 
-        self.client = snakeoil3.Client(p=3101 + self.port_offset)
+        self.client = snakeoil3.Client(p=self.port)
 
         self.client.MAX_STEPS = np.inf
 
@@ -79,7 +75,6 @@ class TorcsDockerEnv(object):
 
     def end(self):
         self.container.stop()
-        self.container.remove()
 
     def step(self, u):
 
@@ -192,5 +187,6 @@ if __name__ == '__main__':
 
     docker_client = docker.from_env()
     # Generate a Torcs environment
-    env = TorcsDockerEnv(docker_client, "worker", 0)
+    env = TorcsDockerEnv(docker_client)
     env.reset(True)
+    env.end()
