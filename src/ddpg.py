@@ -36,8 +36,6 @@ def playGame(train_indicator=1):
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     sess = tf.Session(config=config)
-    from keras import backend as K
-    K.set_session(sess)
 
     actor = ActorNetwork(sess, state_dim, action_dim, BATCH_SIZE, TAU, LRA)
     critic = CriticNetwork(sess, state_dim, action_dim, BATCH_SIZE, TAU, LRC)
@@ -49,15 +47,15 @@ def playGame(train_indicator=1):
     env = TorcsDockerEnv(docker_client, 0)
 
     # Now load the weight
-    try:
-        print("Now we load the weight")
-        actor.model.load_weights("../weights/actormodel.h5")
-        critic.model.load_weights("../weights/criticmodel.h5")
-        actor.target_model.load_weights("../weights/actormodel.h5")
-        critic.target_model.load_weights("../weights/criticmodel.h5")
-        print("Weight load successfully")
-    except OSError as e:
-        print("{}: Weight not found".format(e))
+#     try:
+#         print("Now we load the weight")
+#         actor.model.load_weights("../weights/actormodel.h5")
+#         critic.model.load_weights("../weights/criticmodel.h5")
+#         actor.target_model.load_weights("../weights/actormodel.h5")
+#         critic.target_model.load_weights("../weights/criticmodel.h5")
+#         print("Weight load successfully")
+#     except OSError as e:
+#         print("{}: Weight not found".format(e))
 
     print("TORCS Experiment Start.")
     for i in range(episode_count):
@@ -139,12 +137,12 @@ def playGame(train_indicator=1):
             if done:
                 break
 
-        if np.mod(i, 3) == 0:
-            if (train_indicator):
-                actor.model.save_weights("../weights/actormodel.h5",
-                                         overwrite=True)
-                critic.model.save_weights("../weights/criticmodel.h5",
-                                          overwrite=True)
+#         if np.mod(i, 3) == 0:
+#             if (train_indicator):
+#                 actor.model.save_weights("../weights/actormodel.h5",
+#                                          overwrite=True)
+#                 critic.model.save_weights("../weights/criticmodel.h5",
+#                                           overwrite=True)
 
         print("TOTAL REWARD @ " + str(i) +
               "-th Episode  : Reward " + str(total_reward))
