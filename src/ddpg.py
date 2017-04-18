@@ -1,31 +1,34 @@
 import docker
 
-from ActorNetwork import ActorNetwork
-from CriticNetwork import CriticNetwork
-from OU import OU
-from ReplayBuffer import ReplayBuffer
+from networks import ActorNetwork
+from networks import CriticNetwork
+from replay_buffer import ReplayBuffer
 from gym_torcs_docker import TorcsDockerEnv
+from numpy.random import seed, randn
 import numpy as np
 import tensorflow as tf
 
-OU = OU()  # Ornstein-Uhlenbeck Process
+
+# Ornstein-Uhlenbeck Process
+def ou_func(x, mu, theta, sigma):
+    return theta * (mu - x) + sigma * randn(1)
 
 
-def playGame(train_indicator=1):
+def play_game(train_indicator=1):
     # 1 means Train, 0 means simply Run
-    BUFFER_SIZE = 100000
-    BATCH_SIZE = 32
-    GAMMA = 0.99
-    TAU = 0.001  # Target Network HyperParameters
-    LRA = 0.0001  # Learning rate for Actor
-    LRC = 0.001  # Lerning rate for Critic
+    buffer_size = 100000
+    batch_size = 32
+    gamma = 0.99
+    tau = 0.001  # Target Network HyperParameters
+    lra = 0.0001  # Learning rate for Actor
+    lrc = 0.001  # Lerning rate for Critic
 
     action_dim = 3  # Steering/Acceleration/Brake
     state_dim = 29  # of sensors input
 
-    np.random.seed(1337)
+    seed(1337)
 
-    EXPLORE = 100000.
+    explore = 100000.
     episode_count = 2000
     max_steps = 100000
     done = False
@@ -37,14 +40,14 @@ def playGame(train_indicator=1):
     config.gpu_options.allow_growth = True
     sess = tf.Session(config=config)
 
-    actor = ActorNetwork(sess, state_dim, action_dim, BATCH_SIZE, TAU, LRA)
-    critic = CriticNetwork(sess, state_dim, action_dim, BATCH_SIZE, TAU, LRC)
-    buff = ReplayBuffer(BUFFER_SIZE)  # Create replay buffer
+    actor = ActorNetwork(sess, state_dim, action_dim, tau, lra)
+    critic = CriticNetwork(sess, state_dim, action_dim, batch_size, tau, lrc)
+    buff = ReplayBuffer(buffer_size)  # Create replay buffer
 
     docker_client = docker.from_env()
 
     # Generate a Torcs environment
-    env = TorcsDockerEnv(docker_client, 0)
+    env = TorcsDockerEnv(docker_client, "worker")
 
     # Now load the weight
 #     try:
@@ -74,20 +77,20 @@ def playGame(train_indicator=1):
         total_reward = 0.
         for _ in range(max_steps):
             loss = 0
-            epsilon -= 1.0 / EXPLORE
+            epsilon -= 1.0 / explore
             a_t = np.zeros([1, action_dim])
             noise_t = np.zeros([1, action_dim])
 
-            a_t_original = actor.model.predict(s_t.reshape(1, s_t.shape[0]))
+            a_t_original = actor.predict(s_t.reshape(1, s_t.shape[0]))
             noise_t[0][0] = train_indicator * \
                 max(epsilon, 0) * \
-                OU.function(a_t_original[0][0], 0.0, 0.60, 0.30)
+                ou_func(a_t_original[0][0], 0.0, 0.60, 0.30)
             noise_t[0][1] = train_indicator * \
                 max(epsilon, 0) * \
-                OU.function(a_t_original[0][1], 0.5, 1.00, 0.10)
+                ou_func(a_t_original[0][1], 0.5, 1.00, 0.10)
             noise_t[0][2] = train_indicator * \
                 max(epsilon, 0) * \
-                OU.function(a_t_original[0][2], -0.1, 1.00, 0.05)
+                ou_func(a_t_original[0][2], -0.1, 1.00, 0.05)
 
             a_t[0][0] = a_t_original[0][0] + noise_t[0][0]
             a_t[0][1] = a_t_original[0][1] + noise_t[0][1]
@@ -102,7 +105,7 @@ def playGame(train_indicator=1):
             buff.add(s_t, a_t[0], r_t, s_t1, done)  # Add replay buffer
 
             # Do the batch update
-            batch = buff.getBatch(BATCH_SIZE)
+            batch = buff.getBatch(batch_size)
             states = np.asarray([e[0] for e in batch])
             actions = np.asarray([e[1] for e in batch])
             rewards = np.asarray([e[2] for e in batch])
@@ -110,18 +113,18 @@ def playGame(train_indicator=1):
             dones = np.asarray([e[4] for e in batch])
             y_t = np.asarray([e[1] for e in batch])
 
-            target_q_values = critic.target_model.predict(
-                [new_states, actor.target_model.predict(new_states)])
+            target_q_values = critic.target_predict(
+                new_states, actor.target_predict(new_states))
 
             for k in range(len(batch)):
                 if dones[k]:
                     y_t[k] = rewards[k]
                 else:
-                    y_t[k] = rewards[k] + GAMMA * target_q_values[k]
+                    y_t[k] = rewards[k] + gamma * target_q_values[k]
 
             if (train_indicator):
-                loss += critic.model.train_on_batch([states, actions], y_t)
-                a_for_grad = actor.model.predict(states)
+                loss += critic.train(y_t, states, actions)
+                a_for_grad = actor.predict(states)
                 grads = critic.gradients(states, a_for_grad)
                 actor.train(states, grads)
                 actor.target_train()
@@ -154,4 +157,4 @@ def playGame(train_indicator=1):
 
 
 if __name__ == "__main__":
-    playGame()
+    play_game()
