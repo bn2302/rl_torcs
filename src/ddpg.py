@@ -43,6 +43,7 @@ def play_game(train_indicator=1):
     actor = ActorNetwork(sess, state_dim, action_dim, tau, lra)
     critic = CriticNetwork(sess, state_dim, action_dim, batch_size, tau, lrc)
     buff = ReplayBuffer(buffer_size)  # Create replay buffer
+    saver = tf.train.Saver()
 
     docker_client = docker.from_env()
 
@@ -50,15 +51,11 @@ def play_game(train_indicator=1):
     env = TorcsDockerEnv(docker_client, "worker")
 
     # Now load the weight
-#     try:
-#         print("Now we load the weight")
-#         actor.model.load_weights("../weights/actormodel.h5")
-#         critic.model.load_weights("../weights/criticmodel.h5")
-#         actor.target_model.load_weights("../weights/actormodel.h5")
-#         critic.target_model.load_weights("../weights/criticmodel.h5")
-#         print("Weight load successfully")
-#     except OSError as e:
-#         print("{}: Weight not found".format(e))
+    try:
+        print("Now we load the weight")
+        saver.restore(sess, '../weights/model.ckpt')
+    except tf.errors.NotFoundError as e:
+        print("{}: Weight not found".format(e))
 
     print("TORCS Experiment Start.")
     for i in range(episode_count):
@@ -82,6 +79,7 @@ def play_game(train_indicator=1):
             noise_t = np.zeros([1, action_dim])
 
             a_t_original = actor.predict(s_t.reshape(1, s_t.shape[0]))
+            
             noise_t[0][0] = train_indicator * \
                 max(epsilon, 0) * \
                 ou_func(a_t_original[0][0], 0.0, 0.60, 0.30)
@@ -140,12 +138,9 @@ def play_game(train_indicator=1):
             if done:
                 break
 
-#         if np.mod(i, 3) == 0:
-#             if (train_indicator):
-#                 actor.model.save_weights("../weights/actormodel.h5",
-#                                          overwrite=True)
-#                 critic.model.save_weights("../weights/criticmodel.h5",
-#                                           overwrite=True)
+        if np.mod(i, 3) == 0:
+            if (train_indicator):
+                saver.save(sess, '../weights/model.ckpt')
 
         print("TOTAL REWARD @ " + str(i) +
               "-th Episode  : Reward " + str(total_reward))

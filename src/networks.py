@@ -19,6 +19,7 @@ class Network(object):
 
         self.weights = None
         self.target_weights = None
+        self.cp_trgt_wgt_frm_wgt = None
 
     def _create_target_train(self):
         self.cp_trgt_wgt_frm_wgt = tf.group(
@@ -47,25 +48,25 @@ class CriticNetwork(Network):
         self._create_target_train()
         # GRADIENTS for policy update
         self.action_grads = tf.gradients(self.critic, self.action)
-        self.optimize, self.expected_critic = self._create_train()
+        self.optimize, self.loss, self.expected_critic = self._create_train()
         self.sess.run(tf.global_variables_initializer())
 
     def target_predict(self, states, actions):
-        self.sess.run(self.target_critic, feed_dict={
-            self.target_state: states, self.target_action: actions})
+        return self.sess.run(self.target_critic,
+                             feed_dict={self.target_state: states,
+                                        self.target_action: actions})
 
     def gradients(self, states, actions):
         return self.sess.run(self.action_grads, feed_dict={
             self.state: states, self.action: actions})[0]
 
     def train(self, expected_critic, states, actions):
-        batch = tf.train.batch([expected_critic, states, actions],
-                               batch_size=self.batch_size)
-        for b in batch:
-            self.sess.run(self.optimize, feed_dict={
-                self.expected_critic: expected_critic,
-                self.state: states,
-                self.action: actions})
+
+        loss, _ = self.sess.run([self.loss, self.optimize], feed_dict={
+            self.expected_critic: expected_critic, self.state: states,
+            self.action: actions})
+
+        return loss
 
     def _create_network(self, scope):
         with tf.variable_scope(scope):
@@ -102,12 +103,13 @@ class CriticNetwork(Network):
                                          dtype=tf.float32,
                                          name='expected_critic')
 
-        loss = tf.losses.mean_squared_error(expected_critic, self.critic)
+        loss = tf.reduce_mean(tf.square(expected_critic-self.critic),
+                              name="loss")
 
         trainer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
         optimize = trainer.minimize(loss, name='optimize')
 
-        return expected_critic, optimize
+        return optimize, loss, expected_critic
 
 
 class ActorNetwork(Network):
@@ -127,11 +129,11 @@ class ActorNetwork(Network):
         self.sess.run(tf.global_variables_initializer())
 
     def predict(self, states):
-        self.sess.run(self.action, feed_dict={self.state: states})
+        return self.sess.run(self.action, feed_dict={self.state: states})
 
     def target_predict(self, states):
-        self.sess.run(self.target_action, feed_dict={
-            self.target_state: states})
+        return self.sess.run(self.target_action,
+                             feed_dict={self.target_state: states})
 
     def train(self, states, action_grads):
         self.sess.run(self.optimize, feed_dict={
