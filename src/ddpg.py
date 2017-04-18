@@ -41,7 +41,7 @@ def play_game(train_indicator=1):
     sess = tf.Session(config=config)
 
     actor = ActorNetwork(sess, state_dim, action_dim, tau, lra)
-    critic = CriticNetwork(sess, state_dim, action_dim, batch_size, tau, lrc)
+    critic = CriticNetwork(sess, state_dim, action_dim, tau, lrc)
     buff = ReplayBuffer(buffer_size)  # Create replay buffer
     saver = tf.train.Saver()
 

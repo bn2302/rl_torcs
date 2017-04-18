@@ -32,14 +32,12 @@ class Network(object):
 
 class CriticNetwork(Network):
 
-    def __init__(self, sess, state_size, action_size, batch_size, tau,
-                 learning_rate):
+    def __init__(self, sess, state_size, action_size, tau, learning_rate):
 
         super(CriticNetwork, self).__init__(sess, state_size, action_size,
                                             tau, learning_rate,
                                             'critic_network',
                                             'target_critic_network')
-        self.batch_size = batch_size
         # Now create the model
         self.critic, self.weights, self.state, self.action = \
             self._create_network(self.net_scope)
