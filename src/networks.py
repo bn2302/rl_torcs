@@ -16,6 +16,7 @@ class Network(object):
         self.action_size = action_size
         self.net_scope = net_scope
         self.target_net_scope = target_net_scope
+        self.is_training = False
 
         self.weights = None
         self.target_weights = None
@@ -27,6 +28,7 @@ class Network(object):
               for v1, v2 in zip(self.target_weights, self.weights)])
 
     def target_train(self):
+        self.is_training = True
         self.sess.run(self.cp_trgt_wgt_frm_wgt)
 
 
@@ -50,16 +52,18 @@ class CriticNetwork(Network):
         self.sess.run(tf.global_variables_initializer())
 
     def target_predict(self, states, actions):
+        self.is_training = False
         return self.sess.run(self.target_critic,
                              feed_dict={self.target_state: states,
                                         self.target_action: actions})
 
     def gradients(self, states, actions):
+        self.is_training = False
         return self.sess.run(self.action_grads, feed_dict={
             self.state: states, self.action: actions})[0]
 
     def train(self, expected_critic, states, actions):
-
+        self.is_training = True
         loss, _ = self.sess.run([self.loss, self.optimize], feed_dict={
             self.expected_critic: expected_critic, self.state: states,
             self.action: actions})
@@ -68,28 +72,42 @@ class CriticNetwork(Network):
 
     def _create_network(self, scope):
         with tf.variable_scope(scope):
-            state = tf.placeholder(shape=[None, self.state_size],
-                                   dtype=tf.float32, name='state')
-            action = tf.placeholder(shape=[None, self.action_size],
-                                    dtype=tf.float32, name='action')
 
-            s_layer1 = tf.layers.dense(inputs=state, name='s_layer_1',
-                                       units=CriticNetwork.HIDDEN1_UNITS,
-                                       activation=tf.nn.relu)
+            state = tf.placeholder(
+                shape=[None, self.state_size], dtype=tf.float32, name='state')
+            action = tf.placeholder(
+                shape=[None, self.action_size],
+                dtype=tf.float32, name='action')
 
-            s_layer2 = tf.layers.dense(inputs=s_layer1, name='s_layer_2',
-                                       units=CriticNetwork.HIDDEN2_UNITS)
+            s_layer1 = tf.layers.batch_normalization(
+                tf.layers.dense(
+                    inputs=state, activation=tf.nn.relu,
+                    units=CriticNetwork.HIDDEN1_UNITS),
+                training=self.is_training, name='s_layer_1')
 
-            a_layer = tf.layers.dense(inputs=action, name='a_layer',
-                                      units=CriticNetwork.HIDDEN2_UNITS,
-                                      activation=tf.nn.relu)
+            s_layer2 = tf.layers.batch_normalization(
+                tf.layers.dense(
+                    inputs=s_layer1,
+                    units=CriticNetwork.HIDDEN2_UNITS),
+                training=self.is_training, name='s_layer_2')
 
-            c_layer = tf.layers.dense(inputs=(s_layer2 + a_layer),
-                                      name='c_layer', activation=tf.nn.relu,
-                                      units=CriticNetwork.HIDDEN2_UNITS)
+            a_layer = tf.layers.batch_normalization(
+                tf.layers.dense(
+                    inputs=action,
+                    units=CriticNetwork.HIDDEN2_UNITS),
+                training=self.is_training, name='a_layer')
 
-            critic = tf.layers.dense(inputs=c_layer, name='critic',
-                                     units=self.action_size)
+            c_layer = tf.layers.batch_normalization(
+                tf.layers.dense(
+                    inputs=(s_layer2 + a_layer),
+                    activation=tf.nn.relu,
+                    units=CriticNetwork.HIDDEN2_UNITS),
+                training=self.is_training, name='c_layer')
+
+            critic = tf.layers.batch_normalization(
+                tf.layers.dense(inputs=c_layer,
+                                units=self.action_size),
+                training=self.is_training, name='critic')
 
             weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                         scope=scope)
@@ -127,13 +145,16 @@ class ActorNetwork(Network):
         self.sess.run(tf.global_variables_initializer())
 
     def predict(self, states):
+        self.is_training = False
         return self.sess.run(self.action, feed_dict={self.state: states})
 
     def target_predict(self, states):
+        self.is_training = False
         return self.sess.run(self.target_action,
                              feed_dict={self.target_state: states})
 
     def train(self, states, action_grads):
+        self.training = True
         self.sess.run(self.optimize, feed_dict={
             self.state: states, self.action_gradient: action_grads})
 
@@ -141,22 +162,38 @@ class ActorNetwork(Network):
         with tf.variable_scope(scope):
             state = tf.placeholder(tf.float32, [None, self.state_size],
                                    name='state')
-            hidden0 = tf.layers.dense(inputs=state, name='hidden_0',
-                                      units=ActorNetwork.HIDDEN1_UNITS,
-                                      activation=tf.nn.relu)
-            hidden1 = tf.layers.dense(inputs=hidden0, name='hidden_1',
-                                      units=ActorNetwork.HIDDEN2_UNITS,
-                                      activation=tf.nn.relu)
-            steering = tf.layers.dense(inputs=hidden1, name='steering',
-                                       units=1, activation=tf.nn.tanh)
-            acceleration = tf.layers.dense(inputs=hidden1, name='acceleration',
-                                           units=1, activation=tf.nn.sigmoid)
-            brake = tf.layers.dense(inputs=hidden1, name='brake',
-                                    units=1, activation=tf.nn.sigmoid)
-            action = tf.concat([steering, acceleration, brake], name='action',
-                               axis=1)
-            weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                        scope=scope)
+
+            hidden0 = tf.layers.batch_normalization(
+                tf.layers.dense(
+                    inputs=state, activation=tf.nn.relu,
+                    units=ActorNetwork.HIDDEN1_UNITS),
+                training=self.is_training, name='hidden_0')
+
+            hidden1 = tf.layers.batch_normalization(
+                tf.layers.dense(inputs=hidden0, activation=tf.nn.relu,
+                                units=ActorNetwork.HIDDEN2_UNITS),
+                training=self.is_training, name='hidden_1')
+
+            steering = tf.layers.batch_normalization(
+                tf.layers.dense(
+                    inputs=hidden1, units=1, activation=tf.nn.tanh),
+                training=self.is_training, name='steering')
+
+            acceleration = tf.layers.batch_normalization(
+                tf.layers.dense(
+                    inputs=hidden1, units=1, activation=tf.nn.sigmoid),
+                training=self.is_training, name='acceleration')
+
+            brake = tf.layers.batch_normalization(
+                tf.layers.dense(
+                    inputs=hidden1, units=1, activation=tf.nn.sigmoid),
+                training=self.is_training, name='brake')
+
+            action = tf.concat(
+                [steering, acceleration, brake], name='action', axis=1)
+
+            weights = tf.get_collection(
+                tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope)
 
         return action, weights, state
 
@@ -168,3 +205,6 @@ class ActorNetwork(Network):
         optimize = tf.train.AdamOptimizer(
             self.learning_rate).apply_gradients(grads)
         return optimize, action_gradient
+
+
+

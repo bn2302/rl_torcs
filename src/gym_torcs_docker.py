@@ -36,8 +36,9 @@ class TorcsDockerEnv(object):
         self.observation_space = spaces.Box(low=low, high=high)
 
     def _start_docker(self):
-        os.system('nvidia-docker run' +
-		    ' --rm' + 
+        os.system(
+            'nvidia-docker run' +
+            ' --rm' +
             ' -it' +
             ' --volume="/tmp/.X11-unix/X0:/tmp/.X11-unix/X0:rw"' +
             ' --volume="/usr/lib/x86_64-linux-gnu/libXv.so.1:/usr/lib/x86_64-linux-gnu/libXv.so.1:rw"' +
@@ -83,7 +84,19 @@ class TorcsDockerEnv(object):
         action_torcs = self.client.R.d
         action_torcs['steer'] = this_action['steer']
         action_torcs['accel'] = this_action['accel']
+        action_torcs['brake'] = this_action['brake']
+
         action_torcs['gear'] = 1
+        if self.client.S.d['speedX'] > 50:
+            action_torcs['gear'] = 2
+        if self.client.S.d['speedX'] > 80:
+            action_torcs['gear'] = 3
+        if self.client.S.d['speedX'] > 110:
+            action_torcs['gear'] = 4
+        if self.client.S.d['speedX'] > 140:
+            action_torcs['gear'] = 5
+        if self.client.S.d['speedX'] > 170:
+            action_torcs['gear'] = 6
 
         # Save the privious full-obs from torcs for the reward calculation
         damage_pre = self.client.S.d["damage"]
@@ -99,25 +112,15 @@ class TorcsDockerEnv(object):
 
         # Reward setting Here
         # direction-dependent positive reward
-        track = np.array(obs['track'])
-        sp = np.array(obs['speedX'])
-        progress = sp * np.cos(obs['angle'])
+        progress = (
+            np.array(obs['speedX']) *
+            (np.cos(obs['angle']) - np.sin(obs['angle'])))
+
         reward = progress
 
         # collision detection
         if obs['damage'] - damage_pre > 0:
             reward = -1
-
-        # Termination judgement
-        # Episode is terminated if the car is out of track
-        if track.min() < 0:
-            reward = -1
-            self.client.R.d['meta'] = True
-
-        # Episode terminates if the progress of agent is small
-        if self.terminal_judge_start < self.time_step:
-            if progress < self.termination_limit_progress:
-                self.client.R.d['meta'] = True
 
         # Episode is terminated if the agent runs backward
         if np.cos(obs['angle']) < 0:
@@ -134,8 +137,8 @@ class TorcsDockerEnv(object):
         return self.observation
 
     def agent_to_torcs(self, u):
-        torcs_action = {'steer': u[0]}
-        torcs_action.update({'accel': u[1]})
+        torcs_action = {'steer': u[0], 'accel': u[1], 'brake': u[2]}
+
         return torcs_action
 
     def _make_observaton(self, raw_obs):
