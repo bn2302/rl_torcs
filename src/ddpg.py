@@ -47,9 +47,18 @@ def play_game(train_indicator=1):
     buff = ReplayBuffer(buffer_size)  # Create replay buffer
     saver = tf.train.Saver()
     train_writer = tf.summary.FileWriter(logdir, sess.graph)
+
+    # add summaries
     with tf.name_scope('summary'):
         loss_summary_op = tf.summary.scalar(
             'loss', critic.loss, collections=['loss'])
+
+        speedX_ph = tf.placeholder(
+            shape=[None, ], name='speed_X', dtype=tf.float32)
+        angle_ph = tf.placeholder(
+            shape=[None, 3], name='angle', dtype=tf.float32)
+        trackpos_ph = tf.placeholder(
+            shape=[None, 3], name='track_position', dtype=tf.float32)
 
         reward_ph = tf.placeholder(
             shape=[None, ], name='reward', dtype=tf.float32)
