@@ -73,7 +73,7 @@ def play_game(train_indicator=1):
     docker_client = docker.from_env()
 
     # Generate a Torcs environment
-    env = TorcsDockerEnv(docker_client, "worker")
+    env = TorcsDockerEnv(docker_client, "worker", training=train_indicator)
 
     # Now load the weight
     try:

@@ -84,4 +84,10 @@ COPY sound.xml /usr/local/share/games/torcs/config
 
 RUN echo 'exec vncserver&' >> ~/.bashrc
 
+RUN apt-get update && apt-get install -y \
+	python3
+
+COPY set_track.py /usr/local/bin
+RUN chmod +x /usr/local/bin/set_track.py
+
 CMD ["/bin/bash"]

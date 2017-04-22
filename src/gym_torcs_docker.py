@@ -1,9 +1,11 @@
-from gym import spaces
 import os
 import time
+import random
 import collections as col
 import numpy as np
 import snakeoil3_gym as snakeoil3
+
+from gym import spaces
 
 
 class TorcsDockerEnv(object):
@@ -15,7 +17,7 @@ class TorcsDockerEnv(object):
 
     def __init__(
             self, docker_client, name="torcs", port=3101, vncport=None,
-            torcsdocker_id='bn2302/torcs'):
+            torcsdocker_id='bn2302/torcs', track_name='', training=False):
 
         self.terminal_judge_start = 100
         self.termination_limit_progress = 5
@@ -30,6 +32,8 @@ class TorcsDockerEnv(object):
         self.torcsdocker_id = torcsdocker_id
 
         self.container = self._start_docker()
+        self.track_name = track_name
+        self.training = training
         self.container.exec_run("start_torcs.sh", detach=True)
 
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,))
@@ -38,6 +42,21 @@ class TorcsDockerEnv(object):
         low = np.array([0., -np.inf, -np.inf, -np.inf,
                         0., -np.inf, 0., -np.inf, 0])
         self.observation_space = spaces.Box(low=low, high=high)
+
+    def _set_track(self):
+        if self.track_name is '':
+            if self.training:
+                t_name = random.choice(
+                    ['g-track-1', 'g-track-2', 'ruudskogen', 'forza',
+                     'ole-road-1', 'street-1'])
+            else:
+                t_name = random.choice(
+                    ['g-track-3', 'e-track-6', 'alpine-2'])
+        else:
+            t_name = self.track_name
+
+        self.container.exec_run(
+            'set_track.py -t {}'.format(t_name), detach=True)
 
     def _start_docker(self):
         os.system(
@@ -61,6 +80,9 @@ class TorcsDockerEnv(object):
             self.client.respond_to_server()
 
             if relaunch is True:
+
+                self._set_track()
+
                 self.container.exec_run("kill_torcs.sh", detach=True)
                 self.container.exec_run("start_torcs.sh", detach=True)
 

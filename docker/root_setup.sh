@@ -7,64 +7,9 @@ apt-get install build-essential -y
 curl -O http://us.download.nvidia.com/XFree86/Linux-x86_64/375.51/NVIDIA-Linux-x86_64-375.51.run
 chmod +x ./NVIDIA-Linux-x86_64-*.run
 ./NVIDIA-Linux-x86_64-*.run -q -a -n -X -s
+rm ./NVIDIA-Linux-x86_64-*.run
 
-cat << EOF > /etc/X11/xorg.conf
-
-Section "ServerLayout"
-    Identifier     "Layout0"
-    Screen      0  "Screen0"
-    InputDevice    "Keyboard0" "CoreKeyboard"
-    InputDevice    "Mouse0" "CorePointer"
-EndSection
-
-Section "Files"
-EndSection
-
-Section "InputDevice"
-    # generated from default
-    Identifier     "Mouse0"
-    Driver         "mouse"
-    Option         "Protocol" "auto"
-    Option         "Device" "/dev/psaux"
-    Option         "Emulate3Buttons" "no"
-    Option         "ZAxisMapping" "4 5"
-EndSection
-
-Section "InputDevice"
-    # generated from default
-    Identifier     "Keyboard0"
-    Driver         "kbd"
-EndSection
-
-Section "Monitor"
-    Identifier     "Monitor0"
-    VendorName     "Unknown"
-    ModelName      "Unknown"
-    HorizSync       28.0 - 33.0
-    VertRefresh     43.0 - 72.0
-    Option         "DPMS"
-EndSection
-
-Section "Device"
-    Identifier     "Device0"
-    Driver         "nvidia"
-    VendorName     "NVIDIA Corporation"
-    BusID          "PCI:0:3:0" # THIS MAY CHANGE FROM INSTANCE TO INSTANCE,
-                               # check the device bus by running 'lspci | grep -i nvidia'
-                               # or lshw -C video
-EndSection
-
-Section "Screen"
-    Identifier     "Screen0"
-    Device         "Device0"
-    Monitor        "Monitor0"
-    DefaultDepth    24
-    Option         "AllowEmptyInitialConfiguration" "True" # set by the --allow-empty-initial-configuration flag
-    SubSection     "Display"
-        Depth       24
-    EndSubSection
-EndSection
-EOF
+cp xorg.conf /etc/X11/xorg.conf
 
 # Docker
 apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
@@ -89,7 +34,40 @@ apt-get install python-pip -y
 pip install --upgrade pip
 pip install nvidia-docker-compose
 
+export VGL_VERSION=2.5.2
+wget http://downloads.sourceforge.net/project/virtualgl/${VGL_VERSION}/virtualgl_${VGL_VERSION}_amd64.deb
+dpkg -i virtualgl*.deb && rm virtualgl*.deb
+
+# Set VirtualLG defaults, xauth bits, this adds a DRI line to xorg.conf.
+#/opt/VirtualGL/bin/vglserver_config -config -s -f +t
+/opt/VirtualGL/bin/vglserver_config -config +s +f -t  # access open to all users, restricting users doesn't really work :\
+
+
+apt-get install -y mesa-utils
+
+# install turbovnc
+# can be updated to 1.5.1
+export LIBJPEG_VERSION=1.4.2
+wget http://downloads.sourceforge.net/project/libjpeg-turbo/${LIBJPEG_VERSION}/libjpeg-turbo-official_${LIBJPEG_VERSION}_amd64.deb
+dpkg -i libjpeg-turbo-official*.deb && rm libjpeg-turbo-official*.deb
+# can be updated to 2.1
+export TURBOVNC_VERSION=2.0.1
+wget http://downloads.sourceforge.net/project/turbovnc/${TURBOVNC_VERSION}/turbovnc_${TURBOVNC_VERSION}_amd64.deb
+dpkg -i turbovnc*.deb && rm turbovnc*.deb
+
+# install window manager
+# installing mate as it's supported out of the box by turbovnc, see ~/.vnc/xstartup.turbovnc for more info
+apt-get install mate -y --no-install-recommends
+
 # install lightdm
 apt-get install -qqy lightdm
+
+rm /etc/lightdm/lightdm.conf
+# overriding deprecated default configuration [SeatDefaults] https://wiki.ubuntu.com/LightDM
+cat << EOF - > /etc/lightdm/lightdm.conf
+[Seat:seat0]
+display-setup-script=/usr/bin/vglgenkey
+display-setup-script=xhost +LOCAL:
+EOF
 
 service lightdm start

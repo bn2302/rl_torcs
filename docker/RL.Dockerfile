@@ -11,7 +11,11 @@ RUN apt update && apt install -y --no-install-recommends \
 	wget \
 	cmake \
 	build-essential \
-	vim 
+	vim \
+	less \
+	htop \
+	ctags \
+	tmux
 
 # docker
 RUN curl -fsSL "https://download.docker.com/linux/ubuntu/gpg" | apt-key add - 
@@ -41,7 +45,7 @@ COPY vimrc /root/.vimrc
 
 RUN pip3 install flake8 pylint pyflakes pytest seaborn
 
-WORKDIR "/workdir"
+RUN mkdir /root/rl_torcs 
+WORKDIR "/root/rl_torcs"
 
 CMD ["/bin/bash"]
-#CMD ["/run_jupyter.sh", "--allow-root"]
