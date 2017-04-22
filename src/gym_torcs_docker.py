@@ -14,7 +14,7 @@ class TorcsDockerEnv(object):
     '''
 
     def __init__(
-            self, docker_client, name="torcs", port=3101, vncport=5901,
+            self, docker_client, name="torcs", port=3101, vncport=None,
             torcsdocker_id='bn2302/torcs'):
 
         self.terminal_judge_start = 100
@@ -44,7 +44,6 @@ class TorcsDockerEnv(object):
             'nvidia-docker run' +
             ' --rm' +
             ' -it' +
-            ' -p {:d}:5901'.format(self.vncport) +
             ' --volume="/tmp/.X11-unix/X0:/tmp/.X11-unix/X0:rw"' +
             ' --volume="/usr/lib/x86_64-linux-gnu/libXv.so.1:/usr/lib/x86_64-linux-gnu/libXv.so.1:rw"' +
             ' -p {:d}:3101/udp'.format(self.port) +
@@ -52,7 +51,7 @@ class TorcsDockerEnv(object):
             ' -d {}'.format(self.torcsdocker_id))
 
         return self.docker_client.containers.get(self.name)
-           
+
     def reset(self, relaunch=False):
 
         self.time_step = 0

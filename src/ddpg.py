@@ -28,7 +28,7 @@ def play_game(train_indicator=1):
     action_dim = 3  # Steering/Acceleration/Brake
     state_dim = 29  # of sensors input
 
-    seed(1337)
+    seed(6486)
 
     explore = 100000.
     episode_count = 2000
@@ -52,13 +52,6 @@ def play_game(train_indicator=1):
     with tf.name_scope('summary'):
         loss_summary_op = tf.summary.scalar(
             'loss', critic.loss, collections=['loss'])
-
-        speedX_ph = tf.placeholder(
-            shape=[None, ], name='speed_X', dtype=tf.float32)
-        angle_ph = tf.placeholder(
-            shape=[None, 3], name='angle', dtype=tf.float32)
-        trackpos_ph = tf.placeholder(
-            shape=[None, 3], name='track_position', dtype=tf.float32)
 
         reward_ph = tf.placeholder(
             shape=[None, ], name='reward', dtype=tf.float32)
@@ -90,10 +83,9 @@ def play_game(train_indicator=1):
         print("{}: Weight not found".format(e))
 
     print("TORCS Experiment Start.")
+
     for i in range(episode_count):
-
-        recent_rewards = np.ones(50) * 1e9
-
+        recent_rewards = np.ones(100) * 1e9
         print("Episode : " + str(i) + " Replay Buffer " + str(buff.count()))
 
         if np.mod(i, 3) == 0:
@@ -101,10 +93,9 @@ def play_game(train_indicator=1):
         else:
             ob = env.reset()
 
-        s_t = np.hstack((ob.angle, ob.track, ob.trackPos, ob.speedX,
-                         ob.speedY, ob.speedZ, ob.wheelSpinVel / 100.0,
-                         ob.rpm))
-
+        s_t = np.hstack(
+            (ob.angle, ob.track, ob.trackPos, ob.speedX, ob.speedY, ob.speedZ,
+             ob.wheelSpinVel / 100.0, ob.rpm))
         total_reward = 0.
 
         for j in range(max_steps):
@@ -131,7 +122,7 @@ def play_game(train_indicator=1):
 
             ob, r_t, done, _ = env.step(a_t[0])
 
-            recent_rewards[j % 50] = r_t
+            recent_rewards[j % 100] = r_t
 
             if np.median(recent_rewards) < 5.0:
                 break
@@ -208,5 +199,3 @@ def play_game(train_indicator=1):
 
 if __name__ == "__main__":
     play_game()
-
-
