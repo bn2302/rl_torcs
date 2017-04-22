@@ -1,22 +1,23 @@
 # rl_torcs
 
-first don't use vision
+## Installation
 
-should it be optional?
+The Torcs reinforcement learning environment is based on an Amazon EC2 g2.2xlarge instance running Ubuntu 16.04. 
 
-# Amazon EC2 
+To setup the environment, the following commands have to be executed from a shell:
 
-Starting point G2 instance and Ubuntu 16.04 image
+	git clone https://github.com/bn2302/rl_torcs
+	cd rl_torc/docker/
+	sudo su
+	source root_setup.sh
 
-Install nvidia docker and docker
+	reboot
+
+	# login
+	cd rl_torc/docker
+	source user_setup.sh
+
+## Startup
+The reinforcement learning environment is started using `start_rl` to reattach the environment the alias `attach_rl` can be used.
 
 
- nvidia-docker run --volume="/tmp/.X11-unix/X0:/tmp/.X11-unix/X0:rw" --volume="/usr/lib/x86_64-linux-gnu/libXv.so.1:/usr/lib/x86_64-linux-gnu/libXv.so.1" -p 3101:3101/udp -it bn2302/torcs
-
-https://github.com/plumbee/nvidia-virtualgl
-
-nvidia-docker run -d \
-     --env="DISPLAY" \
-     --volume="/tmp/.X11-unix:/tmp/.X11-unix:rw" \
-     --volume="/usr/lib/x86_64-linux-gnu/libXv.so.1:/usr/lib/x86_64-linux-gnu/libXv.so.1" \
-     plumbee/nvidia-virtualgl:2.5.2 vglrun glxgears
