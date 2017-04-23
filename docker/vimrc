@@ -32,8 +32,7 @@ set clipboard=unnamed
 set nu " line numbering
 syntax on
 
-
-set spell spelllang=en_us
+set visualbell
 
 set splitbelow
 
@@ -65,8 +64,6 @@ let g:SimpylFold_docstring_preview=1
 nnoremap <space> za
 vnoremap <space> zf
 
-fixdel
-set backspace=indent,eol,start
 let mapleader = ","
 
 " Windowsplit related key binindg

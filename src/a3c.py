@@ -42,7 +42,7 @@ def normalized_columns_initializer(std=1.0):
     def _initializer(shape, dtype=None, partition_info=None):
         out = np.random.randn(*shape).astype(np.float32)
         out *= std / np.sqrt(np.square(out).sum(axis=0, keepdims=True))
-        return tf.constant(out)
+        return tf.constan(out)
 
     return _initializer
 
@@ -69,7 +69,7 @@ def addOUNoise(a, epsilon):
 class AC_Network(object):
 
     HIDDEN1_UNITS = 300
-    HIDDEN2_UNITS = 300
+    HIDDEN2_UNITS = 600
 
     def __init__(self, s_size, a_size, scope, trainer):
 
@@ -120,13 +120,27 @@ class AC_Network(object):
                 self.target_v = tf.placeholder(shape=[None], dtype=tf.float32)
                 self.advantages = tf.placeholder(
                     shape=[None], dtype=tf.float32)
-
+                log_prob = normal_dist.log_prob(self.a_his)
+                exp_v = log_prob * td 
+                entropy = normal_dist.entropy()
+                                                            # encourage
+                                                            # exploration
+                                                                                self.exp_v
+                                                                                =
+                                                                                ENTROPY_BETA
+                                                                                *
+                                                                                entropy
+                                                                                +
+                                                                                exp_v
+                                                                                self.a_loss
+                                                                                =
+                                                                                tf.reduce_mean(-self.exp_v)
                 self.value_loss = 0.5 * tf.reduce_sum(
                     tf.square(self.target_v - tf.reshape(self.value, [-1])))
 
                 self.policy_loss = 0.5 * tf.reduce_sum(
                     tf.square(
-                        self.advantages - tf.reshape(self.advantages, [-1])))
+                        self.advantages - self.policy))
 
                 self.loss = self.value_loss + self.policy_loss
 
@@ -188,8 +202,6 @@ class Worker(object):
         self.value_plus = np.asarray(values.tolist() + [bootstrap_value])
         advantages = (
             rewards + gamma * self.value_plus[1:] - self.value_plus[:-1])
-        advantages = discount(advantages, gamma)
-
         feed_dict = {self.local_AC.target_v: discounted_rewards,
                      self.local_AC.inputs: np.vstack(observations),
                      self.local_AC.advantages: advantages}
@@ -376,4 +388,4 @@ def play_game(num_workers):
 
 
 if __name__ == "__main__":
-    play_game(8)
+    play_game(1)
