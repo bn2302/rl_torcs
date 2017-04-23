@@ -11,7 +11,7 @@ from networks import AC_Network
 
 class Worker(object):
 
-    def __init__(self, s_size, action_size, number, trainer, global_episodes,
+    def __init__(self, s_size, action_size, trainer, number, global_episodes,
                  docker_client, model_path):
 
         self.s_size = s_size
@@ -31,9 +31,9 @@ class Worker(object):
         self.episode_mean_values = []
         self.summary_writer = tf.summary.FileWriter(
             '../logs/a3c/train_{}'.format(self.number))
-        
+
         self.local_AC = AC_Network(
-            self.s_size, self.action_size, self.name, self.trainer)
+            self.s_size, self.action_size, self.trainer, self.name)
         self.update_local_ops = AC_Network.update_target_graph(
             'global', self.name)
 
@@ -87,7 +87,7 @@ class Worker(object):
                 episode_reward = []
                 episode_step_count = 0
 
-                obs = self.env.reset(relaunch=True)
+                obs = env.reset(relaunch=True)
                 s = obs_to_state(obs)
                 done = False
 
@@ -215,13 +215,13 @@ class A3C(object):
 
             trainer = tf.train.AdamOptimizer(learning_rate=1e-4)
             master_network = AC_Network(
-                self.state_size, self.action_size, 'global', None)
+                self.state_size, self.action_size, None, 'global')
 
             workers = []
             for i in range(num_workers):
                 workers.append(
                     Worker(
-                        self.state_size, self.action_size, i, trainer,
+                        self.state_size, self.action_size, trainer, i,
                         self.global_episodes, self.docker_client,
                         self.model_path))
 

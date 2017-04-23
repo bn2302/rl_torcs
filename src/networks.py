@@ -217,9 +217,9 @@ class AC_Network(Network):
             state_size, action_size, trainer)
         self.scope = scope
         self.is_training = False
-        self._create_network
+        self._create_network()
         if self.scope != 'global':
-            self._create_train
+            self._create_train()
 
     @staticmethod
     def update_target_graph(from_scope, to_scope):
@@ -267,6 +267,9 @@ class AC_Network(Network):
                 tf.layers.dense(inputs=s_layer2, units=1),
                 training=self.is_training, name='value')
 
+            self.normal_dist = tf.contrib.distributions.Normal(
+                self.policy_mu, self.policy_sd)
+
             self.action = tf.clip_by_value(
                 self.normal_dist.sample(1),
                 [-1.0]*self.action_size, [1.0]*self.action_size)
@@ -278,9 +281,6 @@ class AC_Network(Network):
             self.target_v = tf.placeholder(shape=[None], dtype=tf.float32)
             self.advantages = tf.placeholder(
                 shape=[None], dtype=tf.float32)
-
-            self.normal_dist = tf.contrib.distributions.Normal(
-                self.policy_mu, self.policy_sd)
 
             log_prob = self.normal_dist.log_prob(self.actions)
             exp_v = tf.transpose(

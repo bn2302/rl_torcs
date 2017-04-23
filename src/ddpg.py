@@ -47,7 +47,9 @@ class ReplayBuffer(object):
 
 class DDPG(object):
 
-    def __init__(self, docker_client):
+    def __init__(
+            self, docker_client, model_path='../models/ddpg',
+            log_path='../logs/ddpg'):
 
         self.state_size = 29
         self.action_size = 2
@@ -67,7 +69,7 @@ class DDPG(object):
         self.max_steps = 10000
         self.epsilon = 1
 
-        self.model_path = '../models/ddpg'
+        self.model_path = model_path
 
         if not os.path.exists(self.model_path):
                 os.makedirs(self.model_path)
@@ -76,8 +78,7 @@ class DDPG(object):
         self.config.gpu_options.allow_growth = True
         tf.reset_default_graph()
 
-        self.summary_writer = tf.summary.FileWriter(
-            '../logs/ddpg/train')
+        self.summary_writer = tf.summary.FileWriter(log_path)
 
         self.actor = ActorNetwork(
             self.state_size, self.action_size,
@@ -133,7 +134,7 @@ class DDPG(object):
 
         return a_new
 
-    def train(self, track_name=''):
+    def train(self, track_name='', check_stuck=True):
 
         all_steps = 0
 
@@ -142,12 +143,17 @@ class DDPG(object):
                 self.docker_client, "worker", training=True)
         else:
             env = TorcsDockerEnv(
-                self.docker_client, "worker", track_name)
+                self.docker_client, "worker", track_name=track_name)
 
         with tf.Session(config=self.config) as sess:
             sess.run(tf.global_variables_initializer())
 
             for i in range(self.episode_count):
+
+                recent_rewards = np.ones(100) * 1e9
+                print("Episode : " + str(i) + " Replay Buffer "
+                      + str(self.buff.count()))
+
                 if np.mod(i, 3) == 0:
                     observation = env.reset(relaunch=True)
                 else:
@@ -166,6 +172,11 @@ class DDPG(object):
                     observation, reward_t, done, _ = env.step(
                         DDPG.addOUNoise(action_t[0], self.epsilon))
                     state_t1 = obs_to_state(observation)
+
+                    recent_rewards[j % 100] = reward_t
+
+                    if check_stuck and np.median(recent_rewards) < 5.0:
+                        break
 
                     self.buff.add(
                         state_t, action_t[0], reward_t, state_t1, done)
@@ -219,9 +230,16 @@ class DDPG(object):
 
                     total_reward += reward_t
                     state_t = state_t1
-
+                    print(
+                        "Episode", i, "Step", all_steps, "Action",
+                        action_t, "Reward", reward_t, "Loss", loss)
                     if done:
                         break
+
+                print("TOTAL REWARD @ " + str(i) + "-th Episode  : Reward " +
+                      str(total_reward))
+                print("Total Step: " + str(all_steps))
+                print("")
 
                 if np.mod(i, 50) == 0:
                     self.saver.save(
@@ -234,5 +252,17 @@ if __name__ == "__main__":
 
     docker_client = docker.from_env()
 
-    ddpg = DDPG(docker_client)
+    ddpg = DDPG(
+        docker_client, '../models/ddpg_gtrack1', '../logs/ddpg_gtrack1')
+    ddpg.train('g-track-1')
+
+    ddpg = DDPG(
+        docker_client, '../models/ddpg_traintracks',
+        '../logs/ddpg_traintracks')
+
+    ddpg = DDPG(
+        docker_client, '../models/ddpg_gtrack1_nostuck',
+        '../logs/ddpg_gtrack1_nostuck')
+    ddpg.train('g-track-1', False)
+
     ddpg.train()
