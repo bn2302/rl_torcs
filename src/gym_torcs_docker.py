@@ -1,11 +1,16 @@
 import os
-import time
 import random
 import collections as col
 import numpy as np
 import snakeoil3_gym as snakeoil3
 
 from gym import spaces
+
+
+def obs_to_state(obs):
+    return np.hstack(
+        (obs.angle, obs.track, obs.trackPos, obs.speedX, obs.speedY,
+         obs.speedZ, obs.wheelSpinVel / 100.0, obs.rpm))
 
 
 class TorcsDockerEnv(object):
@@ -164,11 +169,11 @@ class TorcsDockerEnv(object):
         return self.observation
 
     def agent_to_torcs(self, u):
+        accel = 0
+        brake = 0
         if u[1] >= 0:
             accel = u[1]
-            brake = 0
-        if u[1] < 0:
-            accel = 0
+        else:
             brake = u[1]
 
         torcs_action = {'steer': u[0], 'accel': accel, 'brake': brake}

@@ -1,161 +1,21 @@
 import os
 import threading
-import docker
 import numpy as np
 import tensorflow as tf
 import scipy.signal
 
 from time import sleep
-from gym_torcs_docker import TorcsDockerEnv
-from numpy.random import seed, randn
-
-
-# Copies one set of variables to another.
-# Used to set worker network parameters to those of global network.
-def update_target_graph(from_scope, to_scope):
-    from_vars = tf.get_collection(
-        tf.GraphKeys.TRAINABLE_VARIABLES, from_scope)
-    to_vars = tf.get_collection(
-        tf.GraphKeys.TRAINABLE_VARIABLES, to_scope)
-
-    op_holder = []
-    for from_var, to_var in zip(from_vars, to_vars):
-        op_holder.append(to_var.assign(from_var))
-
-    return op_holder
-
-
-def obs_to_state(obs):
-    return np.hstack(
-        (obs.angle, obs.track, obs.trackPos, obs.speedX, obs.speedY,
-         obs.speedZ, obs.wheelSpinVel / 100.0, obs.rpm))
-
-
-# Discounting function used to calculate discounted returns.
-def discount(x, gamma):
-    return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
-
-
-# Used to initialize weights for policy and value output layers
-def normalized_columns_initializer(std=1.0):
-
-    def _initializer(shape, dtype=None, partition_info=None):
-        out = np.random.randn(*shape).astype(np.float32)
-        out *= std / np.sqrt(np.square(out).sum(axis=0, keepdims=True))
-        return tf.constan(out)
-
-    return _initializer
-
-
-def addOUNoise(a, epsilon):
-
-    def ou_func(x, mu, theta, sigma):
-        return theta * (mu - x) + sigma * randn(1)
-
-    a_new = np.zeros(np.shape(a))
-    noise = np.zeros(np.shape(a))
-
-    noise[0] = (max(epsilon, 0) * ou_func(a[0], 0.0, 0.60, 0.30))
-    noise[1] = (max(epsilon, 0) * ou_func(a[1], 0.2, 1.00, 0.10))
-
-    a_new[0] = a[0] + noise[0]
-    a_new[1] = a[1] + noise[1]
-
-    return a_new
-
-
-class AC_Network(object):
-
-    HIDDEN1_UNITS = 300
-    HIDDEN2_UNITS = 600
-
-    def __init__(self, s_size, a_size, scope, trainer):
-
-        self.is_training = False
-
-        with tf.variable_scope(scope):
-            # Input and visual encoding layers
-            self.inputs = tf.placeholder(
-                shape=[None, s_size], dtype=tf.float32)
-
-            s_layer1 = tf.layers.batch_normalization(
-                tf.layers.dense(
-                    inputs=self.inputs, activation=tf.nn.relu,
-                    units=AC_Network.HIDDEN1_UNITS),
-                training=self.is_training, name='s_layer_1')
-
-            s_layer2 = tf.layers.batch_normalization(
-                tf.layers.dense(
-                    inputs=s_layer1, activation=tf.nn.relu,
-                    units=AC_Network.HIDDEN2_UNITS),
-                training=self.is_training, name='s_layer_2')
-
-            # Output layers for policy and value estimations
-            self.policy_mu = tf.layers.batch_normalization(
-                tf.layers.dense(
-                    inputs=s_layer2, units=2, activation=tf.nn.tanh),
-                training=self.is_training, name='policy_mu')
-
-            self.policy_sd = tf.layers.batch_normalization(
-                tf.layers.dense(
-                    inputs=s_layer2, units=2, activation=tf.nn.softplus),
-                training=self.is_training, name='policy_sd')
-
-            self.value = tf.layers.batch_normalization(
-                tf.layers.dense(inputs=s_layer2, units=1),
-                training=self.is_training, name='value')
-
-            if scope != 'global':
-                self.actions = tf.placeholder(
-                    shape=[None, a_size], dtype=tf.float32)
-                self.target_v = tf.placeholder(shape=[None], dtype=tf.float32)
-                self.advantages = tf.placeholder(
-                    shape=[None], dtype=tf.float32)
-
-                self.normal_dist = tf.contrib.distributions.Normal(
-                    self.policy_mu, self.policy_sd)
-
-                log_prob = self.normal_dist.log_prob(self.actions)
-                exp_v = tf.transpose(
-                    tf.multiply(tf.transpose(log_prob), self.advantages))
-                entropy = self.normal_dist.entropy()
-                exp_v = 0.01 * entropy + exp_v
-                self.policy_loss = tf.reduce_sum(-exp_v)
-
-                self.value_loss = 0.5 * tf.reduce_sum(
-                    tf.square(self.target_v - tf.reshape(self.value, [-1])))
-
-                self.loss = 0.5*self.value_loss + self.policy_loss
-
-                self.action = tf.clip_by_value(
-                    self.normal_dist.sample(1),
-                    [-1.0]*a_size, [1.0]*a_size)
-
-                local_vars = tf.get_collection(
-                    tf.GraphKeys.TRAINABLE_VARIABLES, scope)
-
-                self.gradients = tf.gradients(self.loss, local_vars)
-                self.var_norms = tf.global_norm(local_vars)
-
-                grads, self.grad_norms = tf.clip_by_global_norm(
-                    self.gradients, 40.0)
-
-                global_vars = tf.get_collection(
-                    tf.GraphKeys.TRAINABLE_VARIABLES, 'global')
-                self.apply_grads = trainer.apply_gradients(
-                    zip(grads, global_vars))
-
-        def predict()
-
+from gym_torcs_docker import TorcsDockerEnv, obs_to_state
+from networks import AC_Network
 
 
 class Worker(object):
 
-    def __init__(self, s_size, a_size, number, trainer, global_episodes,
+    def __init__(self, s_size, action_size, number, trainer, global_episodes,
                  docker_client, model_path):
 
         self.s_size = s_size
-        self.a_size = a_size
+        self.action_size = action_size
         self.number = number
         self.trainer = trainer
         self.global_episodes = global_episodes
@@ -170,16 +30,18 @@ class Worker(object):
         self.episode_lengths = []
         self.episode_mean_values = []
         self.summary_writer = tf.summary.FileWriter(
-            'train_{}'.format(self.number))
-
-        self.env = TorcsDockerEnv(
-            self.docker_client, self.name, self.docker_port)
-
+            '../logs/a3c/train_{}'.format(self.number))
+        
         self.local_AC = AC_Network(
-            self.s_size, self.a_size, self.name, self.trainer)
-        self.update_local_ops = update_target_graph('global', self.name)
+            self.s_size, self.action_size, self.name, self.trainer)
+        self.update_local_ops = AC_Network.update_target_graph(
+            'global', self.name)
 
     def train(self, rollout, sess, gamma, bootstrap_value):
+        def discount(x, gamma):
+            return scipy.signal.lfilter(
+                [1], [1, -gamma], x[::-1], axis=0)[::-1]
+
         self.local_AC.is_training = True
         rollout = np.array(rollout)
         observations = rollout[:, 0]
@@ -198,16 +60,19 @@ class Worker(object):
                      self.local_AC.inputs: np.vstack(observations),
                      self.local_AC.advantages: advantages}
 
-        v_l, p_l, g_n, v_n, _ = sess.run(
+        value_loss, policy_loss, gradient_norm, value_norm, _ = sess.run(
             [self.local_AC.value_loss, self.local_AC.policy_loss,
              self.local_AC.grad_norms, self.local_AC.var_norms,
              self.local_AC.apply_grads],
             feed_dict=feed_dict)
 
-        return (v_l/len(rollout), p_l/len(rollout), g_n, v_n)
+        return (value_loss/len(rollout), policy_loss/len(rollout),
+                gradient_norm, value_norm)
 
     def work(self, max_episode_length, gamma, sess, coord, saver):
         self.local_AC.is_training = False
+        env = TorcsDockerEnv(
+            self.docker_client, self.name, self.docker_port, training=True)
 
         episode_count = sess.run(self.global_episodes)
         total_steps = 0
@@ -236,9 +101,7 @@ class Worker(object):
 
                     epsilon -= 1.0 / max_episode_length
 
-                    a = addOUNoise(a[0][0], epsilon)
-
-                    obs, r, done, _ = self.env.step(a)
+                    obs, r, done, _ = env.step(a[0][0])
 
                     if not done:
                         s1 = obs_to_state(obs)
@@ -285,7 +148,6 @@ class Worker(object):
                                 sess,
                                 self.model_path+'/model-{:d}.cptk'.format(
                                     episode_count))
-                            print("Saved Model")
 
                         mean_reward = np.mean(self.episode_rewards[-5:])
                         mean_length = np.mean(self.episode_lengths[-5:])
@@ -321,65 +183,78 @@ class Worker(object):
                     if self.name == 'worker_0':
                         sess.run(self.increment)
                         episode_count += 1
+        env.end()
 
 
-def play_game(num_workers):
+class A3C(object):
 
-    seed(6486)
+    def __init__(self, docker_client):
 
-    max_episode_length = 300
-    gamma = .99
-    load_model = False
-    model_path = '../model'
-    a_size = 2
-    s_size = 29
-    docker_client = docker.from_env()
-    config = tf.ConfigProto()
-    config.gpu_options.allow_growth = True
+        self.docker_client = docker_client
 
-    tf.reset_default_graph()
+        self.max_episode_length = 300
+        self.gamma = .99
+        self.model_path = '../model/a3c'
 
-    if not os.path.exists(model_path):
-            os.makedirs(model_path)
+        self.state_size = 29
+        self.action_size = 2
 
-    with tf.device("/cpu:0"):
-        global_episodes = tf.Variable(
-            0, dtype=tf.int32, name='global_episodes', trainable=False)
+        self.config = tf.ConfigProto()
+        self.config.gpu_options.allow_growth = True
 
-        trainer = tf.train.AdamOptimizer(learning_rate=1e-4)
-        master_network = AC_Network(s_size, a_size, 'global', None)
+        tf.reset_default_graph()
 
-        workers = []
-        for i in range(num_workers):
-            workers.append(
-                Worker(
-                    s_size, a_size, i, trainer, global_episodes,
-                    docker_client, model_path))
+        self.global_episodes = tf.Variable(
+                0, dtype=tf.int32, name='global_episodes', trainable=False)
 
-        saver = tf.train.Saver(max_to_keep=5)
+        if not os.path.exists(self.model_path):
+                os.makedirs(self.model_path)
 
-    with tf.Session(config=config) as sess:
+    def train(self, num_workers, load_model=False):
+        with tf.device("/cpu:0"):
 
-        coord = tf.train.Coordinator()
+            trainer = tf.train.AdamOptimizer(learning_rate=1e-4)
+            master_network = AC_Network(
+                self.state_size, self.action_size, 'global', None)
 
-        if load_model:
-            print('Loading Model...')
-            ckpt = tf.train.get_checkpoint_state(model_path)
-            saver.restore(sess, ckpt.model_checkpoint_path)
-        else:
-            sess.run(tf.global_variables_initializer())
+            workers = []
+            for i in range(num_workers):
+                workers.append(
+                    Worker(
+                        self.state_size, self.action_size, i, trainer,
+                        self.global_episodes, self.docker_client,
+                        self.model_path))
 
-        worker_threads = []
-        for worker in workers:
-            t = threading.Thread(
-                target=(
-                    lambda: worker.work(
-                        max_episode_length, gamma, sess, coord, saver)))
-            t.start()
-            sleep(0.5)
-            worker_threads.append(t)
-        coord.join(worker_threads)
+            saver = tf.train.Saver(max_to_keep=5)
+
+        with tf.Session(config=self.config) as sess:
+
+            coord = tf.train.Coordinator()
+
+            if load_model:
+                print('Loading Model...')
+                ckpt = tf.train.get_checkpoint_state(self.model_path)
+                saver.restore(sess, ckpt.model_checkpoint_path)
+            else:
+                sess.run(tf.global_variables_initializer())
+
+            worker_threads = []
+            for worker in workers:
+                t = threading.Thread(
+                    target=(
+                        lambda: worker.work(
+                            self.max_episode_length, self.gamma, sess, coord,
+                            saver)))
+                t.start()
+                sleep(0.5)
+                worker_threads.append(t)
+            coord.join(worker_threads)
 
 
 if __name__ == "__main__":
-    play_game(1)
+    import docker
+
+    docker_client = docker.from_env()
+
+    a3c = A3C(docker_client)
+    a3c.train(1)

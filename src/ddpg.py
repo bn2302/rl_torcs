@@ -1,197 +1,238 @@
-import docker
-
-from networks import ActorNetwork, CriticNetwork
-from replay_buffer import ReplayBuffer
-from gym_torcs_docker import TorcsDockerEnv
-from numpy.random import seed, randn
+import os
+import random
 import numpy as np
 import tensorflow as tf
 
+from collections import deque
+from networks import ActorNetwork, CriticNetwork
+from gym_torcs_docker import TorcsDockerEnv, obs_to_state
+from numpy.random import seed, randn
 
-# Ornstein-Uhlenbeck Process
-def ou_func(x, mu, theta, sigma):
-    return theta * (mu - x) + sigma * randn(1)
 
+class ReplayBuffer(object):
 
-def play_game(train_indicator=1):
+    def __init__(self, buffer_size):
+        self.buffer_size = buffer_size
+        self.num_experiences = 0
+        self.buffer = deque()
 
-    checkpoint_file = '../weights/model.ckpt'
-    logdir = '../logs/train'
-    # 1 means Train, 0 means simply Run
-    buffer_size = 100000
-    batch_size = 32
-    gamma = 0.99
-    tau = 0.001  # Target Network HyperParameters
-    lra = 0.0001  # Learning rate for Actor
-    lrc = 0.001  # Lerning rate for Critic
-
-    action_dim = 2  # Steering/Acceleration/Brake
-    state_dim = 29  # of sensors input
-
-    seed(6486)
-
-    explore = 100000.
-    episode_count = 2000
-    max_steps = 10000
-    done = False
-    step = 0
-    epsilon = 1
-
-    # Tensorflow GPU optimization
-    config = tf.ConfigProto()
-    config.gpu_options.allow_growth = True
-    sess = tf.Session(config=config)
-
-    actor = ActorNetwork(sess, state_dim, action_dim, tau, lra)
-    critic = CriticNetwork(sess, state_dim, action_dim, tau, lrc)
-    buff = ReplayBuffer(buffer_size)  # Create replay buffer
-    saver = tf.train.Saver()
-    train_writer = tf.summary.FileWriter(logdir, sess.graph)
-
-    # add summaries
-    with tf.name_scope('summary'):
-        loss_summary_op = tf.summary.scalar(
-            'loss', critic.loss, collections=['loss'])
-
-        reward_ph = tf.placeholder(
-            shape=[None, ], name='reward', dtype=tf.float32)
-        target_q_values_ph = tf.placeholder(
-            shape=[None, action_dim], name='target_q_values', dtype=tf.float32)
-        y_t_ph = tf.placeholder(
-            shape=[None, action_dim], name='target_y_t', dtype=tf.float32)
-
-        tf.summary.scalar(
-            'reward', tf.reduce_mean(reward_ph), collections=['reward'])
-        tf.summary.scalar(
-            'target_q_values', tf.reduce_mean(target_q_values_ph),
-            collections=['reward'])
-        tf.summary.scalar(
-            'y_t', tf.reduce_mean(y_t_ph), collections=['reward'])
-
-        reward_summary_op = tf.summary.merge_all('reward')
-
-    docker_client = docker.from_env()
-
-    # Generate a Torcs environment
-    env = TorcsDockerEnv(docker_client, "worker", training=train_indicator)
-
-    # Now load the weight
-    try:
-        print("Now we load the weight")
-        saver.restore(sess, checkpoint_file)
-    except tf.errors.NotFoundError as e:
-        print("{}: Weight not found".format(e))
-
-    print("TORCS Experiment Start.")
-
-    for i in range(episode_count):
-        recent_rewards = np.ones(100) * 1e9
-        print("Episode : " + str(i) + " Replay Buffer " + str(buff.count()))
-
-        if np.mod(i, 3) == 0:
-            ob = env.reset(relaunch=True)
+    def getBatch(self, batch_size):
+        # Randomly sample batch_size examples
+        if self.num_experiences < batch_size:
+            return random.sample(self.buffer, self.num_experiences)
         else:
-            ob = env.reset()
+            return random.sample(self.buffer, batch_size)
 
-        s_t = np.hstack(
-            (ob.angle, ob.track, ob.trackPos, ob.speedX, ob.speedY, ob.speedZ,
-             ob.wheelSpinVel / 100.0, ob.rpm))
-        total_reward = 0.
+    def size(self):
+        return self.buffer_size
 
-        for j in range(max_steps):
-            loss = 0
-            epsilon -= 1.0 / explore
-            a_t = np.zeros([1, action_dim])
-            noise_t = np.zeros([1, action_dim])
+    def add(self, state, action, reward, new_state, done):
+        experience = (state, action, reward, new_state, done)
+        if self.num_experiences < self.buffer_size:
+            self.buffer.append(experience)
+            self.num_experiences += 1
+        else:
+            self.buffer.popleft()
+            self.buffer.append(experience)
 
-            a_t_original = actor.predict(s_t.reshape(1, s_t.shape[0]))
+    def count(self):
+        # if buffer is full, return buffer size
+        # otherwise, return experience counter
+        return self.num_experiences
 
-            noise_t[0][0] = train_indicator * \
-                max(epsilon, 0) * \
-                ou_func(a_t_original[0][0], 0.0, 0.60, 0.30)
-            noise_t[0][1] = train_indicator * \
-                max(epsilon, 0) * \
-                ou_func(a_t_original[0][1], 0.2, 1.00, 0.10)
+    def erase(self):
+        self.buffer = deque()
+        self.num_experiences = 0
 
-            a_t[0][0] = a_t_original[0][0] + noise_t[0][0]
-            a_t[0][1] = a_t_original[0][1] + noise_t[0][1]
 
-            ob, r_t, done, _ = env.step(a_t[0])
+class DDPG(object):
 
-            recent_rewards[j % 100] = r_t
+    def __init__(self, docker_client):
 
-            if np.median(recent_rewards) < 5.0:
-                break
+        self.state_size = 29
+        self.action_size = 2
 
-            s_t1 = np.hstack(
-                (ob.angle, ob.track, ob.trackPos, ob.speedX, ob.speedY,
-                 ob.speedZ, ob.wheelSpinVel / 100.0, ob.rpm))
+        self.docker_client = docker_client
 
-            buff.add(s_t, a_t[0], r_t, s_t1, done)  # Add replay buffer
+        self.buffer_size = 100000
+        self.batch_size = 32
+        self.gamma = 0.99
+        self.tau = 0.001  # Target Network HyperParameters
+        self.lra = 0.0001  # Learning rate for Actor
+        self.lrc = 0.001  # Lerning rate for Critic
+        seed(6486)
 
-            # Do the batch update
-            batch = buff.getBatch(batch_size)
-            states = np.asarray([e[0] for e in batch])
-            actions = np.asarray([e[1] for e in batch])
-            rewards = np.asarray([e[2] for e in batch])
-            new_states = np.asarray([e[3] for e in batch])
-            dones = np.asarray([e[4] for e in batch])
-            y_t = np.asarray([e[1] for e in batch])
+        self.explore = 100000.
+        self.episode_count = 2000
+        self.max_steps = 10000
+        self.epsilon = 1
 
-            target_q_values = critic.target_predict(
-                new_states, actor.target_predict(new_states))
+        self.model_path = '../models/ddpg'
 
-            for k in range(len(batch)):
-                if dones[k]:
-                    y_t[k] = rewards[k]
+        if not os.path.exists(self.model_path):
+                os.makedirs(self.model_path)
+
+        self.config = tf.ConfigProto()
+        self.config.gpu_options.allow_growth = True
+        tf.reset_default_graph()
+
+        self.summary_writer = tf.summary.FileWriter(
+            '../logs/ddpg/train')
+
+        self.actor = ActorNetwork(
+            self.state_size, self.action_size,
+            tf.train.AdamOptimizer(self.lra), self.tau)
+
+        self.critic = CriticNetwork(
+            self.state_size, self.action_size,
+            tf.train.AdamOptimizer(self.lrc), self.tau)
+
+        self.buff = ReplayBuffer(self.buffer_size)
+        self.saver = tf.train.Saver()
+        self._create_summary()
+
+    def _create_summary(self):
+        with tf.name_scope('summary'):
+            self.loss_summary_op = tf.summary.scalar(
+                'loss', self.critic.loss, collections=['loss'])
+
+            self.reward_ph = tf.placeholder(
+                shape=[None, ], name='reward', dtype=tf.float32)
+            self.target_q_values_ph = tf.placeholder(
+                shape=[None, self.action_size], name='target_q_values',
+                dtype=tf.float32)
+            self.y_t_ph = tf.placeholder(
+                shape=[None, self.action_size], name='target_y_t',
+                dtype=tf.float32)
+
+            tf.summary.scalar(
+                'reward', tf.reduce_mean(
+                    self.reward_ph), collections=['reward'])
+            tf.summary.scalar(
+                'target_q_values', tf.reduce_mean(self.target_q_values_ph),
+                collections=['reward'])
+            tf.summary.scalar(
+                'y_t', tf.reduce_mean(self.y_t_ph), collections=['reward'])
+
+            self.reward_summary_op = tf.summary.merge_all('reward')
+
+    @staticmethod
+    def addOUNoise(a, epsilon):
+
+        def ou_func(x, mu, theta, sigma):
+            return theta * (mu - x) + sigma * randn(1)
+
+        a_new = np.zeros(np.shape(a))
+        noise = np.zeros(np.shape(a))
+
+        noise[0] = (max(epsilon, 0) * ou_func(a[0], 0.0, 0.60, 0.30))
+        noise[1] = (max(epsilon, 0) * ou_func(a[1], 0.2, 1.00, 0.10))
+
+        a_new[0] = a[0] + noise[0]
+        a_new[1] = a[1] + noise[1]
+
+        return a_new
+
+    def train(self, track_name=''):
+
+        all_steps = 0
+
+        if track_name == '':
+            env = TorcsDockerEnv(
+                self.docker_client, "worker", training=True)
+        else:
+            env = TorcsDockerEnv(
+                self.docker_client, "worker", track_name)
+
+        with tf.Session(config=self.config) as sess:
+            sess.run(tf.global_variables_initializer())
+
+            for i in range(self.episode_count):
+                if np.mod(i, 3) == 0:
+                    observation = env.reset(relaunch=True)
                 else:
-                    y_t[k] = rewards[k] + gamma * target_q_values[k]
+                    observation = env.reset()
 
-            if (train_indicator):
-                loss += critic.train(y_t, states, actions)
-                a_for_grad = actor.predict(states)
-                grads = critic.gradients(states, a_for_grad)
-                actor.train(states, grads)
-                actor.target_train()
-                critic.target_train()
-                if step % 500:
-                    loss_summary, reward_summary = sess.run(
-                            [loss_summary_op,
-                             reward_summary_op],
+                state_t = obs_to_state(observation)
+                total_reward = 0
+
+                for j in range(self.max_steps):
+                    loss = 0
+                    self.epsilon -= 1.0 / self.explore
+
+                    action_t = self.actor.predict(
+                        sess, state_t.reshape(1, state_t.shape[0]))
+
+                    observation, reward_t, done, _ = env.step(
+                        DDPG.addOUNoise(action_t[0], self.epsilon))
+                    state_t1 = obs_to_state(observation)
+
+                    self.buff.add(
+                        state_t, action_t[0], reward_t, state_t1, done)
+                    batch = self.buff.getBatch(self.batch_size)
+                    states = np.asarray([e[0] for e in batch])
+                    actions = np.asarray([e[1] for e in batch])
+                    rewards = np.asarray([e[2] for e in batch])
+                    new_states = np.asarray([e[3] for e in batch])
+                    dones = np.asarray([e[4] for e in batch])
+                    y_t = np.asarray([e[1] for e in batch])
+
+                    target_q_values = self.critic.target_predict(
+                        sess, new_states,
+                        self.actor.target_predict(sess, new_states))
+
+                    for k in range(len(batch)):
+                        if dones[k]:
+                            y_t[k] = rewards[k]
+                        else:
+                            y_t[k] = (
+                                rewards[k] + self.gamma * target_q_values[k])
+
+                    loss += self.critic.train(sess, y_t, states, actions)
+                    actions_for_grad = self.actor.predict(sess, states)
+                    grads = self.critic.gradients(
+                        sess, states, actions_for_grad)
+                    self.actor.train(sess, states, grads)
+                    self.actor.target_train(sess)
+                    self.critic.target_train(sess)
+
+                    all_steps += 1
+
+                    if j % 50:
+
+                        loss_summary, reward_summary = sess.run(
+                            [self.loss_summary_op,
+                             self.reward_summary_op],
                             feed_dict={
-                                critic.expected_critic: y_t,
-                                critic.state: states,
-                                critic.action: actions,
-                                reward_ph: rewards,
-                                target_q_values_ph: target_q_values,
-                                y_t_ph: y_t})
+                                self.critic.expected_critic: y_t,
+                                self.critic.state: states,
+                                self.critic.action: actions,
+                                self.reward_ph: rewards,
+                                self.target_q_values_ph: target_q_values,
+                                self.y_t_ph: y_t})
 
-                    train_writer.add_summary(loss_summary)
-                    train_writer.add_summary(reward_summary)
+                        self.summary_writer.add_summary(
+                            loss_summary, all_steps)
+                        self.summary_writer.add_summary(
+                            reward_summary, all_steps)
+                        self.summary_writer.flush()
 
-            total_reward += r_t
-            s_t = s_t1
+                    total_reward += reward_t
+                    state_t = state_t1
 
-            print("Episode", i, "Step", step, "Action",
-                  a_t, "Reward", r_t, "Loss", loss)
+                    if done:
+                        break
 
-            step += 1
-            if done:
-                break
-
-        if np.mod(i, 3) == 0:
-            if (train_indicator):
-                saver.save(sess, checkpoint_file)
-
-        print("TOTAL REWARD @ " + str(i) +
-              "-th Episode  : Reward " + str(total_reward))
-        print("Total Step: " + str(step))
-        print("")
-
-    env.end()  # This is for shutting down TORCS
-    train_writer.close()
-    print("Finish.")
+                if np.mod(i, 50) == 0:
+                    self.saver.save(
+                        sess, self.model_path+'/model-{:d}.cptk'.format(i))
+        env.end()
 
 
 if __name__ == "__main__":
-    play_game()
+    import docker
+
+    docker_client = docker.from_env()
+
+    ddpg = DDPG(docker_client)
+    ddpg.train()

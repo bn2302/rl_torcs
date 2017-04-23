@@ -6,18 +6,20 @@ class Network(object):
     HIDDEN1_UNITS = 300
     HIDDEN2_UNITS = 600
 
-    def __init__(self, sess, state_size, action_size, tau, learning_rate,
-                 net_scope, target_net_scope):
-
-        self.sess = sess
-        self.tau = tau
-        self.learning_rate = learning_rate
+    def __init__(self, state_size, action_size, trainer):
         self.state_size = state_size
         self.action_size = action_size
-        self.net_scope = net_scope
-        self.target_net_scope = target_net_scope
+        self.trainer = trainer
         self.is_training = False
 
+
+class ActorCriticBaseNetwork(Network):
+
+    def __init__(self, state_size, action_size, trainer, tau):
+        super(ActorCriticBaseNetwork, self).__init__(
+            state_size, action_size, trainer)
+
+        self.tau = tau
         self.weights = None
         self.target_weights = None
         self.cp_trgt_wgt_frm_wgt = None
@@ -27,19 +29,20 @@ class Network(object):
             *[v1.assign(self.tau*v2 + (1-v1))
               for v1, v2 in zip(self.target_weights, self.weights)])
 
-    def target_train(self):
+    def target_train(self, sess):
         self.is_training = True
-        self.sess.run(self.cp_trgt_wgt_frm_wgt)
+        sess.run(self.cp_trgt_wgt_frm_wgt)
 
 
-class CriticNetwork(Network):
+class CriticNetwork(ActorCriticBaseNetwork):
 
-    def __init__(self, sess, state_size, action_size, tau, learning_rate):
+    def __init__(self, state_size, action_size, trainer, tau):
 
-        super(CriticNetwork, self).__init__(sess, state_size, action_size,
-                                            tau, learning_rate,
-                                            'critic_network',
-                                            'target_critic_network')
+        super(CriticNetwork, self).__init__(
+            state_size, action_size, trainer, tau)
+
+        self.net_scope = 'critic_network'
+        self.target_net_scope = 'target_critic_network'
         # Now create the model
         self.critic, self.weights, self.state, self.action = \
             self._create_network(self.net_scope)
@@ -49,26 +52,6 @@ class CriticNetwork(Network):
         # GRADIENTS for policy update
         self.action_grads = tf.gradients(self.critic, self.action)
         self.optimize, self.loss, self.expected_critic = self._create_train()
-        self.sess.run(tf.global_variables_initializer())
-
-    def target_predict(self, states, actions):
-        self.is_training = False
-        return self.sess.run(self.target_critic,
-                             feed_dict={self.target_state: states,
-                                        self.target_action: actions})
-
-    def gradients(self, states, actions):
-        self.is_training = False
-        return self.sess.run(self.action_grads, feed_dict={
-            self.state: states, self.action: actions})[0]
-
-    def train(self, expected_critic, states, actions):
-        self.is_training = True
-        loss, _ = self.sess.run([self.loss, self.optimize], feed_dict={
-            self.expected_critic: expected_critic, self.state: states,
-            self.action: actions})
-
-        return loss
 
     def _create_network(self, scope):
         with tf.variable_scope(scope):
@@ -122,19 +105,43 @@ class CriticNetwork(Network):
         loss = tf.reduce_mean(tf.square(expected_critic-self.critic),
                               name="loss")
 
-        trainer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-        optimize = trainer.minimize(loss, name='optimize')
+        optimize = self.trainer.minimize(loss, name='optimize')
 
         return optimize, loss, expected_critic
 
+    def target_predict(self, sess, states, actions):
+        self.is_training = False
+        return sess.run(
+            self.target_critic,
+            feed_dict={self.target_state: states,
+                       self.target_action: actions})
 
-class ActorNetwork(Network):
+    def gradients(self, sess, states, actions):
+        self.is_training = False
+        return sess.run(
+            self.action_grads,
+            feed_dict={self.state: states, self.action: actions})[0]
 
-    def __init__(self, sess, state_size, action_size, tau, learning_rate):
+    def train(self, sess, expected_critic, states, actions):
+        self.is_training = True
+        loss, _ = sess.run(
+            [self.loss, self.optimize],
+            feed_dict={
+                self.expected_critic: expected_critic, self.state: states,
+                self.action: actions})
 
-        super(ActorNetwork, self).__init__(sess, state_size, action_size, tau,
-                                           learning_rate, 'actor_network',
-                                           'target_actor_network')
+        return loss
+
+
+class ActorNetwork(ActorCriticBaseNetwork):
+
+    def __init__(self, state_size, action_size, trainer, tau):
+
+        super(ActorNetwork, self).__init__(
+            state_size, action_size, trainer, tau)
+
+        self.net_scope = 'actor_network'
+        self.target_net_scope = 'target_actor_network'
         # Now create the model
         self.action, self.weights, self.state = \
             self._create_network(self.net_scope)
@@ -142,21 +149,6 @@ class ActorNetwork(Network):
             self._create_network(self.target_net_scope)
         self._create_target_train()
         self.optimize, self.action_gradient = self._create_train()
-        self.sess.run(tf.global_variables_initializer())
-
-    def predict(self, states):
-        self.is_training = False
-        return self.sess.run(self.action, feed_dict={self.state: states})
-
-    def target_predict(self, states):
-        self.is_training = False
-        return self.sess.run(self.target_action,
-                             feed_dict={self.target_state: states})
-
-    def train(self, states, action_grads):
-        self.training = True
-        self.sess.run(self.optimize, feed_dict={
-            self.state: states, self.action_gradient: action_grads})
 
     def _create_network(self, scope):
         with tf.variable_scope(scope):
@@ -197,9 +189,127 @@ class ActorNetwork(Network):
         params_grad = tf.gradients(self.action, self.weights,
                                    tf.negative(action_gradient))
         grads = zip(params_grad, self.weights)
-        optimize = tf.train.AdamOptimizer(
-            self.learning_rate).apply_gradients(grads)
+        optimize = self.trainer.apply_gradients(grads)
         return optimize, action_gradient
 
+    def predict(self, sess, states):
+        self.is_training = False
+        return sess.run(self.action, feed_dict={self.state: states})
+
+    def target_predict(self, sess, states):
+        self.is_training = False
+        return sess.run(
+            self.target_action,
+            feed_dict={self.target_state: states})
+
+    def train(self, sess, states, action_grads):
+        self.training = True
+        sess.run(
+            self.optimize,
+            feed_dict={
+                self.state: states, self.action_gradient: action_grads})
 
 
+class AC_Network(Network):
+
+    def __init__(self, state_size, action_size, trainer, scope):
+        super(AC_Network, self).__init__(
+            state_size, action_size, trainer)
+        self.scope = scope
+        self.is_training = False
+        self._create_network
+        if self.scope != 'global':
+            self._create_train
+
+    @staticmethod
+    def update_target_graph(from_scope, to_scope):
+        from_vars = tf.get_collection(
+            tf.GraphKeys.TRAINABLE_VARIABLES, from_scope)
+        to_vars = tf.get_collection(
+            tf.GraphKeys.TRAINABLE_VARIABLES, to_scope)
+
+        op_holder = []
+        for from_var, to_var in zip(from_vars, to_vars):
+            op_holder.append(to_var.assign(from_var))
+
+        return op_holder
+
+    def _create_network(self):
+        with tf.variable_scope(self.scope):
+            # Input and visual encoding layers
+            self.inputs = tf.placeholder(
+                shape=[None, self.state_size], dtype=tf.float32)
+
+            s_layer1 = tf.layers.batch_normalization(
+                tf.layers.dense(
+                    inputs=self.inputs, activation=tf.nn.relu,
+                    units=AC_Network.HIDDEN1_UNITS),
+                training=self.is_training, name='s_layer_1')
+
+            s_layer2 = tf.layers.batch_normalization(
+                tf.layers.dense(
+                    inputs=s_layer1, activation=tf.nn.relu,
+                    units=AC_Network.HIDDEN2_UNITS),
+                training=self.is_training, name='s_layer_2')
+
+            # Output layers for policy and value estimations
+            self.policy_mu = tf.layers.batch_normalization(
+                tf.layers.dense(
+                    inputs=s_layer2, units=2, activation=tf.nn.tanh),
+                training=self.is_training, name='policy_mu')
+
+            self.policy_sd = tf.layers.batch_normalization(
+                tf.layers.dense(
+                    inputs=s_layer2, units=2, activation=tf.nn.softplus),
+                training=self.is_training, name='policy_sd')
+
+            self.value = tf.layers.batch_normalization(
+                tf.layers.dense(inputs=s_layer2, units=1),
+                training=self.is_training, name='value')
+
+            self.action = tf.clip_by_value(
+                self.normal_dist.sample(1),
+                [-1.0]*self.action_size, [1.0]*self.action_size)
+
+    def _create_train(self):
+        with tf.variable_scope(self.scope):
+            self.actions = tf.placeholder(
+                shape=[None, self.action_size], dtype=tf.float32)
+            self.target_v = tf.placeholder(shape=[None], dtype=tf.float32)
+            self.advantages = tf.placeholder(
+                shape=[None], dtype=tf.float32)
+
+            self.normal_dist = tf.contrib.distributions.Normal(
+                self.policy_mu, self.policy_sd)
+
+            log_prob = self.normal_dist.log_prob(self.actions)
+            exp_v = tf.transpose(
+                tf.multiply(tf.transpose(log_prob), self.advantages))
+            entropy = self.normal_dist.entropy()
+            exp_v = 0.01 * entropy + exp_v
+            self.policy_loss = tf.reduce_sum(-exp_v)
+
+            self.value_loss = 0.5 * tf.reduce_sum(
+                tf.square(self.target_v - tf.reshape(self.value, [-1])))
+
+            self.loss = 0.5*self.value_loss + self.policy_loss
+
+            local_vars = tf.get_collection(
+                tf.GraphKeys.TRAINABLE_VARIABLES, self.scope)
+
+            self.gradients = tf.gradients(self.loss, local_vars)
+            self.var_norms = tf.global_norm(local_vars)
+
+            grads, self.grad_norms = tf.clip_by_global_norm(
+                self.gradients, 40.0)
+
+            global_vars = tf.get_collection(
+                tf.GraphKeys.TRAINABLE_VARIABLES, 'global')
+            self.apply_grads = self.trainer.apply_gradients(
+                zip(grads, global_vars))
+
+    def predict(self, sess, state):
+        action = sess.run(
+            self.action,
+            feed_dict={self.inputs: [state]})
+        return action[0]
