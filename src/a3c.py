@@ -55,13 +55,11 @@ def addOUNoise(a, epsilon):
     a_new = np.zeros(np.shape(a))
     noise = np.zeros(np.shape(a))
 
-    noise[0][0] = (max(epsilon, 0) * ou_func(a[0][0], 0.0, 0.60, 0.30))
-    noise[0][1] = (max(epsilon, 0) * ou_func(a[0][1], 0.5, 1.00, 0.10))
-    noise[0][2] = (max(epsilon, 0) * ou_func(a[0][2], -0.1, 1.00, 0.05))
+    noise[0] = (max(epsilon, 0) * ou_func(a[0], 0.0, 0.60, 0.30))
+    noise[1] = (max(epsilon, 0) * ou_func(a[1], 0.2, 1.00, 0.10))
 
-    a_new[0][0] = a[0][0] + noise[0][0]
-    a_new[0][1] = a[0][1] + noise[0][1]
-    a_new[0][2] = a[0][2] + noise[0][2]
+    a_new[0] = a[0] + noise[0]
+    a_new[1] = a[1] + noise[1]
 
     return a_new
 
@@ -93,56 +91,45 @@ class AC_Network(object):
                 training=self.is_training, name='s_layer_2')
 
             # Output layers for policy and value estimations
-            steering = tf.layers.batch_normalization(
+            self.policy_mu = tf.layers.batch_normalization(
                 tf.layers.dense(
-                    inputs=s_layer2, units=1, activation=tf.nn.tanh),
-                training=self.is_training, name='steering')
+                    inputs=s_layer2, units=2, activation=tf.nn.tanh),
+                training=self.is_training, name='policy_mu')
 
-            acceleration = tf.layers.batch_normalization(
+            self.policy_sd = tf.layers.batch_normalization(
                 tf.layers.dense(
-                    inputs=s_layer2, units=1, activation=tf.nn.sigmoid),
-                training=self.is_training, name='acceleration')
-
-            brake = tf.layers.batch_normalization(
-                tf.layers.dense(
-                    inputs=s_layer2, units=1, activation=tf.nn.sigmoid),
-                training=self.is_training, name='brake')
-
-            self.policy = tf.concat(
-                [steering, acceleration, brake], name='policy', axis=1)
+                    inputs=s_layer2, units=2, activation=tf.nn.softplus),
+                training=self.is_training, name='policy_sd')
 
             self.value = tf.layers.batch_normalization(
                 tf.layers.dense(inputs=s_layer2, units=1),
                 training=self.is_training, name='value')
 
             if scope != 'global':
-
+                self.actions = tf.placeholder(
+                    shape=[None, a_size], dtype=tf.float32)
                 self.target_v = tf.placeholder(shape=[None], dtype=tf.float32)
                 self.advantages = tf.placeholder(
                     shape=[None], dtype=tf.float32)
-                log_prob = normal_dist.log_prob(self.a_his)
-                exp_v = log_prob * td 
-                entropy = normal_dist.entropy()
-                                                            # encourage
-                                                            # exploration
-                                                                                self.exp_v
-                                                                                =
-                                                                                ENTROPY_BETA
-                                                                                *
-                                                                                entropy
-                                                                                +
-                                                                                exp_v
-                                                                                self.a_loss
-                                                                                =
-                                                                                tf.reduce_mean(-self.exp_v)
+
+                self.normal_dist = tf.contrib.distributions.Normal(
+                    self.policy_mu, self.policy_sd)
+
+                log_prob = self.normal_dist.log_prob(self.actions)
+                exp_v = tf.transpose(
+                    tf.multiply(tf.transpose(log_prob), self.advantages))
+                entropy = self.normal_dist.entropy()
+                exp_v = 0.01 * entropy + exp_v
+                self.policy_loss = tf.reduce_sum(-exp_v)
+
                 self.value_loss = 0.5 * tf.reduce_sum(
                     tf.square(self.target_v - tf.reshape(self.value, [-1])))
 
-                self.policy_loss = 0.5 * tf.reduce_sum(
-                    tf.square(
-                        self.advantages - self.policy))
+                self.loss = 0.5*self.value_loss + self.policy_loss
 
-                self.loss = self.value_loss + self.policy_loss
+                self.action = tf.clip_by_value(
+                    self.normal_dist.sample(1),
+                    [-1.0]*a_size, [1.0]*a_size)
 
                 local_vars = tf.get_collection(
                     tf.GraphKeys.TRAINABLE_VARIABLES, scope)
@@ -157,6 +144,9 @@ class AC_Network(object):
                     tf.GraphKeys.TRAINABLE_VARIABLES, 'global')
                 self.apply_grads = trainer.apply_gradients(
                     zip(grads, global_vars))
+
+        def predict()
+
 
 
 class Worker(object):
@@ -173,7 +163,7 @@ class Worker(object):
         self.model_path = model_path
 
         self.name = 'worker_{}'.format(self.number)
-        self.docker_port = 3101 + self.number
+        self.docker_port = 3102 + self.number
 
         self.increment = self.global_episodes.assign_add(1)
         self.episode_rewards = []
@@ -193,6 +183,7 @@ class Worker(object):
         self.local_AC.is_training = True
         rollout = np.array(rollout)
         observations = rollout[:, 0]
+        actions = np.stack(rollout[:, 1], 0)
         rewards = rollout[:, 2]
         values = rollout[:, 5]
         self.rewards_plus = np.asarray(
@@ -203,6 +194,7 @@ class Worker(object):
         advantages = (
             rewards + gamma * self.value_plus[1:] - self.value_plus[:-1])
         feed_dict = {self.local_AC.target_v: discounted_rewards,
+                     self.local_AC.actions: actions,
                      self.local_AC.inputs: np.vstack(observations),
                      self.local_AC.advantages: advantages}
 
@@ -239,13 +231,14 @@ class Worker(object):
                 while not done:
 
                     a, v = sess.run(
-                        [self.local_AC.policy, self.local_AC.value],
+                        [self.local_AC.action, self.local_AC.value],
                         feed_dict={self.local_AC.inputs: [s]})
 
                     epsilon -= 1.0 / max_episode_length
-                    a = addOUNoise(a, epsilon)
 
-                    obs, r, done, _ = self.env.step(a[0])
+                    a = addOUNoise(a[0][0], epsilon)
+
+                    obs, r, done, _ = self.env.step(a)
 
                     if not done:
                         s1 = obs_to_state(obs)
@@ -338,7 +331,7 @@ def play_game(num_workers):
     gamma = .99
     load_model = False
     model_path = '../model'
-    a_size = 3
+    a_size = 2
     s_size = 29
     docker_client = docker.from_env()
     config = tf.ConfigProto()
@@ -366,6 +359,7 @@ def play_game(num_workers):
         saver = tf.train.Saver(max_to_keep=5)
 
     with tf.Session(config=config) as sess:
+
         coord = tf.train.Coordinator()
 
         if load_model:

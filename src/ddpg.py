@@ -25,7 +25,7 @@ def play_game(train_indicator=1):
     lra = 0.0001  # Learning rate for Actor
     lrc = 0.001  # Lerning rate for Critic
 
-    action_dim = 3  # Steering/Acceleration/Brake
+    action_dim = 2  # Steering/Acceleration/Brake
     state_dim = 29  # of sensors input
 
     seed(6486)
@@ -56,9 +56,9 @@ def play_game(train_indicator=1):
         reward_ph = tf.placeholder(
             shape=[None, ], name='reward', dtype=tf.float32)
         target_q_values_ph = tf.placeholder(
-            shape=[None, 3], name='target_q_values', dtype=tf.float32)
+            shape=[None, action_dim], name='target_q_values', dtype=tf.float32)
         y_t_ph = tf.placeholder(
-            shape=[None, 3], name='target_y_t', dtype=tf.float32)
+            shape=[None, action_dim], name='target_y_t', dtype=tf.float32)
 
         tf.summary.scalar(
             'reward', tf.reduce_mean(reward_ph), collections=['reward'])
@@ -111,14 +111,10 @@ def play_game(train_indicator=1):
                 ou_func(a_t_original[0][0], 0.0, 0.60, 0.30)
             noise_t[0][1] = train_indicator * \
                 max(epsilon, 0) * \
-                ou_func(a_t_original[0][1], 0.5, 1.00, 0.10)
-            noise_t[0][2] = train_indicator * \
-                max(epsilon, 0) * \
-                ou_func(a_t_original[0][2], -0.1, 1.00, 0.05)
+                ou_func(a_t_original[0][1], 0.2, 1.00, 0.10)
 
             a_t[0][0] = a_t_original[0][0] + noise_t[0][0]
             a_t[0][1] = a_t_original[0][1] + noise_t[0][1]
-            a_t[0][2] = a_t_original[0][2] + noise_t[0][2]
 
             ob, r_t, done, _ = env.step(a_t[0])
 

@@ -37,6 +37,7 @@ class TorcsDockerEnv(object):
         self.container.exec_run("start_torcs.sh", detach=True)
 
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,))
+
         high = np.array([1., np.inf, np.inf, np.inf, 1., np.inf, 1., np.inf,
                          255])
         low = np.array([0., -np.inf, -np.inf, -np.inf,
@@ -163,7 +164,14 @@ class TorcsDockerEnv(object):
         return self.observation
 
     def agent_to_torcs(self, u):
-        torcs_action = {'steer': u[0], 'accel': u[1], 'brake': u[2]}
+        if u[1] >= 0:
+            accel = u[1]
+            brake = 0
+        if u[1] < 0:
+            accel = 0
+            brake = u[1]
+
+        torcs_action = {'steer': u[0], 'accel': accel, 'brake': brake}
 
         return torcs_action
 

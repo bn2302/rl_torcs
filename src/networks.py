@@ -181,16 +181,11 @@ class ActorNetwork(Network):
 
             acceleration = tf.layers.batch_normalization(
                 tf.layers.dense(
-                    inputs=hidden1, units=1, activation=tf.nn.sigmoid),
+                    inputs=hidden1, units=1, activation=tf.nn.tanh),
                 training=self.is_training, name='acceleration')
 
-            brake = tf.layers.batch_normalization(
-                tf.layers.dense(
-                    inputs=hidden1, units=1, activation=tf.nn.sigmoid),
-                training=self.is_training, name='brake')
-
             action = tf.concat(
-                [steering, acceleration, brake], name='action', axis=1)
+                [steering, acceleration], name='action', axis=1)
 
             weights = tf.get_collection(
                 tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope)
