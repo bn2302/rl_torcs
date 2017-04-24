@@ -88,7 +88,12 @@ class Worker(object):
                 episode_reward = 0
                 episode_step_count = 0
 
-                observation = env.reset(relaunch=True)
+                # reset docker every third episode
+                local_episodes = 0
+                if np.mod(local_episodes, 3) == 0:
+                    observation = env.reset(relaunch=True)
+                else:
+                    observation = env.reset()
                 state_t = obs_to_state(observation)
                 done = False
 
@@ -124,6 +129,7 @@ class Worker(object):
                     if self.name == 'worker_0':
                         print(
                             "Episode", episode_count, "Step",
+                            episode_step_count, "Total_Steps",
                             total_steps, "Action", action_t[0][0],
                             "Reward", reward_t)
 
@@ -142,6 +148,7 @@ class Worker(object):
                     if done:
                         break
 
+                local_episodes += 1
                 self.episode_rewards.append(episode_reward)
                 self.episode_lengths.append(episode_step_count)
                 self.episode_mean_values.append(
@@ -215,7 +222,7 @@ class A3C(object):
 
         self.docker_start_port = docker_start_port
 
-        self.max_episode_length = 300
+        self.max_episode_length = 500
         self.gamma = .99
         self.logdir = logdir
         self.modeldir = modeldir

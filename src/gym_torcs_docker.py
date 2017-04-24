@@ -13,7 +13,6 @@ def obs_to_state(obs):
          obs.speedZ, obs.wheelSpinVel / 100.0, obs.rpm))
 
 
-
 class TorcsDockerEnv(object):
     '''A torcs docker environment
 
