@@ -1,4 +1,5 @@
 import tensorflow as tf
+import numpy as np
 
 
 class Network(object):
@@ -258,29 +259,32 @@ class AC_Network(Network):
                     inputs=s_layer2, units=2, activation=tf.nn.tanh),
                 training=self.is_training, name='policy_mu')
 
-            self.policy_sd = tf.layers.batch_normalization(
+            self.policy_sd = tf.maximum(tf.layers.batch_normalization(
                 tf.layers.dense(
                     inputs=s_layer2, units=2, activation=tf.nn.softplus),
-                training=self.is_training, name='policy_sd')
+                training=self.is_training), np.array([0, 0]), name='policy_sd')
 
             self.value = tf.layers.batch_normalization(
                 tf.layers.dense(inputs=s_layer2, units=1),
                 training=self.is_training, name='value')
 
             self.normal_dist = tf.contrib.distributions.Normal(
-                self.policy_mu, self.policy_sd)
+                self.policy_mu, self.policy_sd, name='normal_dist')
 
             self.action = tf.clip_by_value(
                 self.normal_dist.sample(1),
-                [-1.0]*self.action_size, [1.0]*self.action_size)
+                [-1.0]*self.action_size, [1.0]*self.action_size,
+                name='action')
 
     def _create_train(self):
         with tf.variable_scope(self.scope):
             self.actions = tf.placeholder(
-                shape=[None, self.action_size], dtype=tf.float32)
-            self.target_v = tf.placeholder(shape=[None], dtype=tf.float32)
+                shape=[None, self.action_size], dtype=tf.float32,
+                name='actions')
+            self.target_v = tf.placeholder(
+                shape=[None], dtype=tf.float32, name='target_v')
             self.advantages = tf.placeholder(
-                shape=[None], dtype=tf.float32)
+                shape=[None], dtype=tf.float32, name='advantages')
 
             log_prob = self.normal_dist.log_prob(self.actions)
             exp_v = tf.transpose(
