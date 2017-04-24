@@ -259,10 +259,13 @@ class AC_Network(Network):
                     inputs=s_layer2, units=2, activation=tf.nn.tanh),
                 training=self.is_training, name='policy_mu')
 
-            self.policy_sd = tf.maximum(tf.layers.batch_normalization(
-                tf.layers.dense(
-                    inputs=s_layer2, units=2, activation=tf.nn.softplus),
-                training=self.is_training), np.array([0, 0]), name='policy_sd')
+            self.policy_sd = tf.clip_by_value(
+                tf.layers.batch_normalization(
+                    tf.layers.dense(
+                        inputs=s_layer2, units=2, activation=tf.nn.softplus),
+                    training=self.is_training),
+                [1e-2]*self.action_size, [0.5]*self.action_size,
+                name='policy_sd')
 
             self.value = tf.layers.batch_normalization(
                 tf.layers.dense(inputs=s_layer2, units=1),
