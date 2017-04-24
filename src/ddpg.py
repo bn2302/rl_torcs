@@ -48,8 +48,8 @@ class ReplayBuffer(object):
 class DDPG(object):
 
     def __init__(
-            self, docker_client, model_path='../models/ddpg',
-            log_path='../logs/ddpg'):
+            self, docker_client, name='worker', port=3101,
+            model_path='../models/ddpg', log_path='../logs/ddpg'):
 
         self.state_size = 29
         self.action_size = 2
@@ -70,6 +70,8 @@ class DDPG(object):
         self.epsilon = 1
 
         self.model_path = model_path
+        self.port = port
+        self.name = name
 
         if not os.path.exists(self.model_path):
                 os.makedirs(self.model_path)
@@ -140,10 +142,11 @@ class DDPG(object):
 
         if track_name == '':
             env = TorcsDockerEnv(
-                self.docker_client, "worker", training=True)
+                self.docker_client, self.name, self.port, training=True)
         else:
             env = TorcsDockerEnv(
-                self.docker_client, "worker", track_name=track_name)
+                self.docker_client, self.name, self.port,
+                track_name=track_name)
 
         with tf.Session(config=self.config) as sess:
             sess.run(tf.global_variables_initializer())
@@ -253,15 +256,16 @@ if __name__ == "__main__":
     docker_client = docker.from_env()
 
     ddpg = DDPG(
-        docker_client, '../models/ddpg_gtrack1', '../logs/ddpg_gtrack1')
+        docker_client, 3101, '../models/ddpg_gtrack1', '../logs/ddpg_gtrack1')
     ddpg.train('g-track-1')
 
     ddpg = DDPG(
-        docker_client, '../models/ddpg_traintracks',
+        docker_client, 3101, '../models/ddpg_traintracks',
         '../logs/ddpg_traintracks')
+    ddpg.train()
 
     ddpg = DDPG(
-        docker_client, '../models/ddpg_gtrack1_nostuck',
+        docker_client, 3101, '../models/ddpg_gtrack1_nostuck',
         '../logs/ddpg_gtrack1_nostuck')
     ddpg.train('g-track-1', False)
 
