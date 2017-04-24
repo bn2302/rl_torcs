@@ -24,7 +24,7 @@ class Worker(object):
         self.modeldir = modeldir
         self.logdir = logdir
 
-        self.name = 'worker_{}'.format(self.number)
+        self.name = 'worker_'+str(self.number)
         self.docker_port = docker_port
 
         self.increment = self.global_episodes.assign_add(1)
@@ -32,7 +32,7 @@ class Worker(object):
         self.episode_lengths = []
         self.episode_mean_values = []
         self.summary_writer = tf.summary.FileWriter(
-            os.path.join(self.logdir, 'train_{}'.format(self.number)))
+            self.logdir + '/train_' + str(self.number))
 
         self.local_AC = A3CNetwork(
             self.s_size, self.action_size, self.trainer, self.name)
@@ -127,12 +127,21 @@ class Worker(object):
                     total_steps += 1
                     episode_step_count += 1
 
-                    if self.name == 'worker_0':
-                        print(
-                            "Episode", episode_count, "Step",
-                            episode_step_count, "Total_Steps",
-                            total_steps, "Action", action_t[0][0],
-                            "Reward", reward_t)
+                    print(
+                        "Worker", self.name,
+                        "Episode", episode_count, "Step",
+                        episode_step_count, "Total_Steps",
+                        total_steps, "Action", action_t[0][0],
+                        "Reward", reward_t)
+                    if total_steps % 10:
+                        summary = tf.Summary()
+                        summary.value.add(
+                            tag='summary/reward_1',
+                            simple_value=float(reward_t))
+                        self.summary_writer.add_summary(
+                            summary, total_steps)
+
+                    self.summary_writer.flush()
 
                     if (len(episode_buffer) == 30 and not done
                             and episode_step_count != max_episode_length-1):
@@ -173,11 +182,10 @@ class Worker(object):
                     mean_length = np.mean(self.episode_lengths[-5:])
                     mean_value = np.mean(self.episode_mean_values[-5:])
 
-                    if self.name == 'worker_0':
-                        print(
-                            "Worker", self.name, "Episode", episode_count,
-                            "Reward", mean_reward, "value_Loss", value_loss,
-                            "policy_loss", policy_loss)
+                    print(
+                        "Worker", self.name, "Episode", episode_count,
+                        "Reward", mean_reward, "value_Loss", value_loss,
+                        "policy_loss", policy_loss)
 
                     summary = tf.Summary()
                     summary.value.add(
