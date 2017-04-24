@@ -7,7 +7,7 @@ import scipy.signal
 from time import sleep
 from gym_torcs_docker import TorcsDockerEnv, obs_to_state
 from networks import AC_Network
-
+from tensorflow.python import debug as tf_debug
 
 class Worker(object):
 
@@ -45,7 +45,7 @@ class Worker(object):
         self.local_AC.is_training = True
         rollout = np.array(rollout)
         observations = rollout[:, 0]
-        actions = np.stack(rollout[:, 1], 0)
+        actions = np.stack(rollout[:, 1], 0)[0][0]
         rewards = rollout[:, 2]
         values = rollout[:, 5]
         self.rewards_plus = np.asarray(
@@ -137,10 +137,6 @@ class Worker(object):
                     self.episode_mean_values.append(
                         np.mean(episode_values))
 
-                    if len(episode_buffer) != 0:
-                        v_l, p_l, g_n, v_n = self.train(
-                            episode_buffer, sess, gamma, 0.0)
-
                     if episode_count % 5 == 0 and episode_count != 0:
                         if (episode_count % 250 == 0
                                 and self.name == 'worker_0'):
@@ -152,6 +148,14 @@ class Worker(object):
                         mean_reward = np.mean(self.episode_rewards[-5:])
                         mean_length = np.mean(self.episode_lengths[-5:])
                         mean_value = np.mean(self.episode_mean_values[-5:])
+                        if len(episode_buffer) != 0:
+                            v_l, p_l, g_n, v_n = self.train(
+                                episode_buffer, sess, gamma, 0.0)
+                            print(
+                                "Worker", self.name, "Episode", episode_count,
+                                "Reward", mean_reward, "value_Loss", v_l,
+                                "policy_loss", p_l)
+
                         summary = tf.Summary()
                         summary.value.add(
                             tag='Perf/Reward',
@@ -194,7 +198,7 @@ class A3C(object):
 
         self.max_episode_length = 300
         self.gamma = .99
-        self.model_path = '../model/a3c'
+        self.model_path = '../models/a3c'
 
         self.state_size = 29
         self.action_size = 2
@@ -227,7 +231,12 @@ class A3C(object):
 
             saver = tf.train.Saver(max_to_keep=5)
 
-        with tf.Session(config=self.config) as sess:
+        sess = tf_debug.LocalCLIDebugWrapperSession(
+                tf.Session(config=self.config))
+
+        with sess:
+
+            sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
 
             coord = tf.train.Coordinator()
 
