@@ -2,7 +2,6 @@ import os
 import threading
 import numpy as np
 import tensorflow as tf
-from tensorflow.python import debug as tf_debug
 import scipy.signal
 
 from time import sleep
@@ -127,13 +126,13 @@ class Worker(object):
                     total_steps += 1
                     episode_step_count += 1
 
-                    print(
-                        "Worker", self.name,
-                        "Episode", episode_count, "Step",
-                        episode_step_count, "Total_Steps",
-                        total_steps, "Action", action_t[0][0],
-                        "Reward", reward_t)
-                    if total_steps % 10:
+                    if total_steps % 20:
+                        print(
+                            "Worker", self.name,
+                            "Episode", episode_count, "Step",
+                            episode_step_count, "Total_Steps",
+                            total_steps, "Action", action_t[0][0],
+                            "Reward", reward_t)
                         summary = tf.Summary()
                         summary.value.add(
                             tag='summary/reward_1',
@@ -155,7 +154,7 @@ class Worker(object):
                                 episode_buffer, sess, gamma, value_t1)
                         episode_buffer = []
                         sess.run(self.update_local_ops)
-                    if done:
+                    if (done or episode_step_count != max_episode_length):
                         break
 
                 local_episodes += 1
@@ -169,12 +168,11 @@ class Worker(object):
                      variable_norm) = self.train(
                         episode_buffer, sess, gamma, 0.0)
 
-                if episode_count % 5 == 0 and episode_count != 0:
-                    if (episode_count % 250 == 0
-                            and self.name == 'worker_0'):
+                if episode_count != 0:
+                    if (self.name == 'worker_0'):
                         saver.save(
                             sess,
-                            os.path.join(self.model_path,
+                            os.path.join(self.modeldir,
                                          'model-{:d}.cptk'.format(
                                              episode_count)))
 
@@ -217,7 +215,7 @@ class Worker(object):
 
                 if self.name == 'worker_0':
                     sess.run(self.increment)
-                    episode_count += 1
+                episode_count += 1
         env.end()
 
 
@@ -231,7 +229,7 @@ class A3C(object):
 
         self.docker_start_port = docker_start_port
 
-        self.max_episode_length = 500
+        self.max_episode_length = 4000
         self.gamma = .99
         self.logdir = logdir
         self.modeldir = modeldir
@@ -267,11 +265,7 @@ class A3C(object):
 
             saver = tf.train.Saver(max_to_keep=5)
 
-        sess = (  # tf_debug.LocalCLIDebugWrapperSession(
-            tf.Session(config=self.config))
-
-        with sess:
-#             sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
+        with tf.Session(config=self.config) as sess:
 
             coord = tf.train.Coordinator()
 
