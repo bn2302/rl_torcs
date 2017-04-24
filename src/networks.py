@@ -262,7 +262,7 @@ class A3CNetwork(Network):
                     tf.layers.dense(
                         inputs=s_layer2, units=2, activation=tf.nn.softplus),
                     training=self.is_training),
-                [0.1]*self.action_size, [2]*self.action_size,
+                [0.05]*self.action_size, [0.25]*self.action_size,
                 name='policy_sd')
 
             self.value = tf.layers.batch_normalization(
