@@ -24,7 +24,7 @@ parser.add_argument(
     help='Track used for training, if left blank all 6 training tracks will be used')
 
 parser.add_argument(
-    '-r', '--reset', type=bool, default=True,
+    '-r', '--reset', type=bool, default=False,
     help='terminate episode if stuck')
 
 parser.add_argument(

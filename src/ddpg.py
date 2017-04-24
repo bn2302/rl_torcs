@@ -153,7 +153,7 @@ class DDPG(object):
 
             for i in range(self.episode_count):
 
-                recent_rewards = np.ones(100) * 1e9
+                recent_rewards = np.ones(1000) * 1e9
                 print("Episode : " + str(i) + " Replay Buffer "
                       + str(self.buff.count()))
 
@@ -176,9 +176,10 @@ class DDPG(object):
                         DDPG.addOUNoise(action_t[0], self.epsilon))
                     state_t1 = obs_to_state(observation)
 
-                    recent_rewards[j % 100] = reward_t
+                    recent_rewards[j % 1000] = reward_t
 
-                    if check_stuck and np.median(recent_rewards) < 5.0:
+                    if (check_stuck and np.median(recent_rewards) < 1.0
+                            and i/self.episode_count < 0.5):
                         break
 
                     self.buff.add(

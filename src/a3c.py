@@ -121,6 +121,12 @@ class Worker(object):
                     total_steps += 1
                     episode_step_count += 1
 
+                    if self.name == 'worker_0':
+                        print(
+                            "Episode", episode_count, "Step",
+                            total_steps, "Action", action_t[0][0],
+                            "Reward", reward_t)
+
                     if (len(episode_buffer) == 30 and not done
                             and episode_step_count != max_episode_length-1):
 
@@ -158,10 +164,12 @@ class Worker(object):
                     mean_reward = np.mean(self.episode_rewards[-5:])
                     mean_length = np.mean(self.episode_lengths[-5:])
                     mean_value = np.mean(self.episode_mean_values[-5:])
-                    print(
-                        "Worker", self.name, "Episode", episode_count,
-                        "Reward", mean_reward, "value_Loss", value_loss,
-                        "policy_loss", policy_loss)
+
+                    if self.name == 'worker_0':
+                        print(
+                            "Worker", self.name, "Episode", episode_count,
+                            "Reward", mean_reward, "value_Loss", value_loss,
+                            "policy_loss", policy_loss)
 
                     summary = tf.Summary()
                     summary.value.add(
