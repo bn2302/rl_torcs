@@ -1,6 +1,5 @@
 import tensorflow as tf
 
-
 class Network(object):
 
     HIDDEN1_UNITS = 300
@@ -263,7 +262,7 @@ class A3CNetwork(Network):
                     tf.layers.dense(
                         inputs=s_layer2, units=2, activation=tf.nn.softplus),
                     training=self.is_training),
-                [1e-2]*self.action_size, [0.5]*self.action_size,
+                [0.1]*self.action_size, [2]*self.action_size,
                 name='policy_sd')
 
             self.value = tf.layers.batch_normalization(

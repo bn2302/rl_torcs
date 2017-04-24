@@ -2,6 +2,7 @@ import os
 import threading
 import numpy as np
 import tensorflow as tf
+from tensorflow.python import debug as tf_debug
 import scipy.signal
 
 from time import sleep
@@ -258,7 +259,11 @@ class A3C(object):
 
             saver = tf.train.Saver(max_to_keep=5)
 
-        with tf.Session(config=self.config) as sess:
+        sess = (  # tf_debug.LocalCLIDebugWrapperSession(
+            tf.Session(config=self.config))
+
+        with sess:
+#             sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
 
             coord = tf.train.Coordinator()
 
