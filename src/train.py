@@ -2,6 +2,7 @@
 import argparse
 import docker
 from ddpg import DDPG
+from a3c import A3C
 
 
 parser = argparse.ArgumentParser(description='Run commands')
@@ -46,9 +47,10 @@ if __name__ == '__main__':
     docker_client = docker.from_env()
 
     if args.algorithm == 'ddpg':
-        algo = DDPG(
+        ddpg = DDPG(
             docker_client, args.name, args.port, args.modeldir, args.logdir)
-    if args.algorithm == 'a3c':
-        pass
+        ddpg.train(args.track, args.reset)
 
-    algo.train(args.track, args.reset)
+    if args.algorithm == 'a3c':
+        a3c = A3C(docker_client, args.port, args.modeldir, args.logdir)
+        a3c.train(args.workers)

@@ -211,10 +211,10 @@ class ActorNetwork(ActorCriticBaseNetwork):
                 self.state: states, self.action_gradient: action_grads})
 
 
-class AC_Network(Network):
+class A3CNetwork(Network):
 
     def __init__(self, state_size, action_size, trainer, scope):
-        super(AC_Network, self).__init__(
+        super(A3CNetwork, self).__init__(
             state_size, action_size, trainer)
         self.scope = scope
         self.is_training = False
@@ -244,13 +244,13 @@ class AC_Network(Network):
             s_layer1 = tf.layers.batch_normalization(
                 tf.layers.dense(
                     inputs=self.inputs, activation=tf.nn.relu,
-                    units=AC_Network.HIDDEN1_UNITS),
+                    units=A3CNetwork.HIDDEN1_UNITS),
                 training=self.is_training, name='s_layer_1')
 
             s_layer2 = tf.layers.batch_normalization(
                 tf.layers.dense(
                     inputs=s_layer1, activation=tf.nn.relu,
-                    units=AC_Network.HIDDEN2_UNITS),
+                    units=A3CNetwork.HIDDEN2_UNITS),
                 training=self.is_training, name='s_layer_2')
 
             # Output layers for policy and value estimations

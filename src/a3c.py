@@ -6,13 +6,13 @@ import scipy.signal
 
 from time import sleep
 from gym_torcs_docker import TorcsDockerEnv, obs_to_state
-from networks import AC_Network
-from tensorflow.python import debug as tf_debug
+from networks import A3CNetwork
+
 
 class Worker(object):
 
     def __init__(self, s_size, action_size, trainer, number, global_episodes,
-                 docker_client, model_path):
+                 docker_client, docker_port, modeldir, logdir):
 
         self.s_size = s_size
         self.action_size = action_size
@@ -20,21 +20,22 @@ class Worker(object):
         self.trainer = trainer
         self.global_episodes = global_episodes
         self.docker_client = docker_client
-        self.model_path = model_path
+        self.modeldir = modeldir
+        self.logdir = logdir
 
         self.name = 'worker_{}'.format(self.number)
-        self.docker_port = 3102 + self.number
+        self.docker_port = docker_port
 
         self.increment = self.global_episodes.assign_add(1)
         self.episode_rewards = []
         self.episode_lengths = []
         self.episode_mean_values = []
         self.summary_writer = tf.summary.FileWriter(
-            '../logs/a3c/train_{}'.format(self.number))
+            os.path.join(self.logdir, 'train_{}'.format(self.number)))
 
-        self.local_AC = AC_Network(
+        self.local_AC = A3CNetwork(
             self.s_size, self.action_size, self.trainer, self.name)
-        self.update_local_ops = AC_Network.update_target_graph(
+        self.update_local_ops = A3CNetwork.update_target_graph(
             'global', self.name)
 
     def train(self, rollout, sess, gamma, bootstrap_value):
@@ -59,12 +60,12 @@ class Worker(object):
                      self.local_AC.actions: actions,
                      self.local_AC.inputs: np.vstack(observations),
                      self.local_AC.advantages: advantages}
-
         value_loss, policy_loss, gradient_norm, value_norm, _ = sess.run(
             [self.local_AC.value_loss, self.local_AC.policy_loss,
              self.local_AC.grad_norms, self.local_AC.var_norms,
              self.local_AC.apply_grads],
             feed_dict=feed_dict)
+        self.local_AC.is_training = False
 
         return (value_loss/len(rollout), policy_loss/len(rollout),
                 gradient_norm, value_norm)
@@ -84,122 +85,132 @@ class Worker(object):
                 episode_buffer = []
                 episode_values = []
                 episode_frames = []
-                episode_reward = []
+                episode_reward = 0
                 episode_step_count = 0
 
-                obs = env.reset(relaunch=True)
-                s = obs_to_state(obs)
+                observation = env.reset(relaunch=True)
+                state_t = obs_to_state(observation)
                 done = False
 
                 epsilon = 1
 
                 while not done:
 
-                    a, v = sess.run(
+                    action_t, value_t = sess.run(
                         [self.local_AC.action, self.local_AC.value],
-                        feed_dict={self.local_AC.inputs: [s]})
+                        feed_dict={self.local_AC.inputs: [state_t]})
 
                     epsilon -= 1.0 / max_episode_length
 
-                    obs, r, done, _ = env.step(a[0][0])
+                    observation, reward_t, done, _ = env.step(action_t[0][0])
 
                     if not done:
-                        s1 = obs_to_state(obs)
-                        episode_frames.append(s1)
+                        state_t1 = obs_to_state(observation)
+                        episode_frames.append(state_t1)
                     else:
-                        s1 = s
+                        state_t1 = state_t
 
-                    episode_buffer.append([s, a, r, s1, done, v[0, 0]])
-                    episode_values.append(v[0, 0])
+                    episode_buffer.append(
+                        [state_t, action_t, reward_t, state_t1, done,
+                         value_t[0, 0]])
+                    episode_values.append(value_t[0, 0])
 
-                    episode_reward += r
+                    episode_reward += reward_t
 
-                    s = s1
+                    state_t = state_t1
                     total_steps += 1
                     episode_step_count += 1
 
                     if (len(episode_buffer) == 30 and not done
                             and episode_step_count != max_episode_length-1):
 
-                        v1 = sess.run(
+                        value_t1 = sess.run(
                             self.local_AC.value,
-                            feed_dict={self.local_AC.inputs: [s]})[0, 0]
+                            feed_dict={self.local_AC.inputs: [state_t]})[0, 0]
 
-                        v_l, p_l, g_n, v_n = self.train(
-                            episode_buffer, sess, gamma, v1)
+                        (value_loss, policy_loss, gradient_norm,
+                            variable_norm) = self.train(
+                                episode_buffer, sess, gamma, value_t1)
                         episode_buffer = []
                         sess.run(self.update_local_ops)
-                        if done:
-                            break
+                    if done:
+                        break
 
-                    self.episode_rewards.append(episode_reward)
-                    self.episode_lengths.append(episode_step_count)
-                    self.episode_mean_values.append(
-                        np.mean(episode_values))
+                self.episode_rewards.append(episode_reward)
+                self.episode_lengths.append(episode_step_count)
+                self.episode_mean_values.append(
+                    np.mean(episode_values))
 
-                    if episode_count % 5 == 0 and episode_count != 0:
-                        if (episode_count % 250 == 0
-                                and self.name == 'worker_0'):
-                            saver.save(
-                                sess,
-                                self.model_path+'/model-{:d}.cptk'.format(
-                                    episode_count))
+                if len(episode_buffer) != 0:
+                    (value_loss, policy_loss, gradient_norm,
+                     variable_norm) = self.train(
+                        episode_buffer, sess, gamma, 0.0)
 
-                        mean_reward = np.mean(self.episode_rewards[-5:])
-                        mean_length = np.mean(self.episode_lengths[-5:])
-                        mean_value = np.mean(self.episode_mean_values[-5:])
-                        if len(episode_buffer) != 0:
-                            v_l, p_l, g_n, v_n = self.train(
-                                episode_buffer, sess, gamma, 0.0)
-                            print(
-                                "Worker", self.name, "Episode", episode_count,
-                                "Reward", mean_reward, "value_Loss", v_l,
-                                "policy_loss", p_l)
+                if episode_count % 5 == 0 and episode_count != 0:
+                    if (episode_count % 250 == 0
+                            and self.name == 'worker_0'):
+                        saver.save(
+                            sess,
+                            os.path.join(self.model_path,
+                                         'model-{:d}.cptk'.format(
+                                             episode_count)))
 
-                        summary = tf.Summary()
-                        summary.value.add(
-                            tag='Perf/Reward',
-                            simple_value=float(mean_reward))
-                        summary.value.add(
-                            tag='Perf/Length',
-                            simple_value=float(mean_length))
-                        summary.value.add(
-                            tag='Perf/Value',
-                            simple_value=float(mean_value))
-                        summary.value.add(
-                            tag='Losses/Value Loss',
-                            simple_value=float(v_l))
-                        summary.value.add(
-                            tag='Losses/Policy Loss',
-                            simple_value=float(p_l))
-                        summary.value.add(
-                            tag='Losses/Grad Norm',
-                            simple_value=float(g_n))
-                        summary.value.add(
-                            tag='Losses/Var Norm',
-                            simple_value=float(v_n))
+                    mean_reward = np.mean(self.episode_rewards[-5:])
+                    mean_length = np.mean(self.episode_lengths[-5:])
+                    mean_value = np.mean(self.episode_mean_values[-5:])
+                    print(
+                        "Worker", self.name, "Episode", episode_count,
+                        "Reward", mean_reward, "value_Loss", value_loss,
+                        "policy_loss", policy_loss)
 
-                        self.summary_writer.add_summary(
-                            summary, episode_count)
+                    summary = tf.Summary()
+                    summary.value.add(
+                        tag='Perf/Reward',
+                        simple_value=float(mean_reward))
+                    summary.value.add(
+                        tag='Perf/Length',
+                        simple_value=float(mean_length))
+                    summary.value.add(
+                        tag='Perf/Value',
+                        simple_value=float(mean_value))
+                    summary.value.add(
+                        tag='Losses/Value Loss',
+                        simple_value=float(value_loss))
+                    summary.value.add(
+                        tag='Losses/Policy Loss',
+                        simple_value=float(policy_loss))
+                    summary.value.add(
+                        tag='Losses/Grad Norm',
+                        simple_value=float(gradient_norm))
+                    summary.value.add(
+                        tag='Losses/Var Norm',
+                        simple_value=float(variable_norm))
 
-                        self.summary_writer.flush()
+                    self.summary_writer.add_summary(
+                        summary, episode_count)
 
-                    if self.name == 'worker_0':
-                        sess.run(self.increment)
-                        episode_count += 1
+                    self.summary_writer.flush()
+
+                if self.name == 'worker_0':
+                    sess.run(self.increment)
+                    episode_count += 1
         env.end()
 
 
 class A3C(object):
 
-    def __init__(self, docker_client):
+    def __init__(
+            self, docker_client, docker_start_port=3101,
+            modeldir='../models/a3c', logdir='../logs/a3c'):
 
         self.docker_client = docker_client
 
+        self.docker_start_port = docker_start_port
+
         self.max_episode_length = 300
         self.gamma = .99
-        self.model_path = '../models/a3c'
-
+        self.logdir = logdir
+        self.modeldir = modeldir
         self.state_size = 29
         self.action_size = 2
 
@@ -211,14 +222,14 @@ class A3C(object):
         self.global_episodes = tf.Variable(
                 0, dtype=tf.int32, name='global_episodes', trainable=False)
 
-        if not os.path.exists(self.model_path):
-                os.makedirs(self.model_path)
+        if not os.path.exists(self.modeldir):
+                os.makedirs(self.modeldir)
 
     def train(self, num_workers, load_model=False):
         with tf.device("/cpu:0"):
 
             trainer = tf.train.AdamOptimizer(learning_rate=1e-4)
-            master_network = AC_Network(
+            master_network = A3CNetwork(
                 self.state_size, self.action_size, None, 'global')
 
             workers = []
@@ -227,16 +238,12 @@ class A3C(object):
                     Worker(
                         self.state_size, self.action_size, trainer, i,
                         self.global_episodes, self.docker_client,
-                        self.model_path))
+                        self.docker_start_port + i,
+                        self.modeldir, self.logdir))
 
             saver = tf.train.Saver(max_to_keep=5)
 
-        sess = tf_debug.LocalCLIDebugWrapperSession(
-                tf.Session(config=self.config))
-
-        with sess:
-
-            sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
+        with tf.Session(config=self.config) as sess:
 
             coord = tf.train.Coordinator()
 
