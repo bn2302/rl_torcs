@@ -32,7 +32,7 @@ The reinforcement learning docker environment is started using `start_rl` to rea
 
 ## Start the training
 
-The different agents can be trained using the scripts called  `train_X.py`.
+The different agents can be trained using the scripts in the `src` folder called `train_X.py`.
 Please not if an agent is prematurely canceled the corresponding torcs
 container must be stopped using `docker stop NAME `. To list the running
 containers please use  `docker ps -l -a`
@@ -48,7 +48,7 @@ AWS instance via ssh, forward the port with `-L 6006:localhost:6006`. Then tenso
 
 ## Start the testing
 Testing is done in the Jupyter notebook test.ipynb .
-To start the jupyter server run the following command from the rl_torcs main directory
+To start the jupyter server run the following command from the main directory
 
 	jupyter server --allow-root
 

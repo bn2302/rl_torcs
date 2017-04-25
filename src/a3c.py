@@ -1,3 +1,14 @@
+# -*- coding: utf-8 -*-
+"""
+    rl_torcs.a3c
+    ~~~~~~~~~~~~
+
+    asynchronous actor critic algorithm for handling gym_torcs_docker
+    environments
+
+    :copyright: (c) 2017 by Bastian Niebel.
+"""
+
 import os
 import threading
 import numpy as np
@@ -10,6 +21,7 @@ from networks import A3CNetwork
 
 
 class Worker(object):
+    """Thread runner for the A3C algorithm, does the heavy lifting"""
 
     def __init__(self, s_size, action_size, trainer, number, global_episodes,
                  docker_client, docker_port, modeldir, logdir):
@@ -39,11 +51,17 @@ class Worker(object):
             'global', self.name)
 
     def train(self, rollout, sess, gamma, bootstrap_value):
+        """Train the model use discounted rewards according to
+        https://arxiv.org/pdf/1506.02438.pdf"""
+
         def discount(x, gamma):
             return scipy.signal.lfilter(
                 [1], [1, -gamma], x[::-1], axis=0)[::-1]
 
+        # enable batch normalization
         self.local_AC.is_training = True
+
+        # Get the rollouts and bootstrap them
         rollout = np.array(rollout)
         observations = rollout[:, 0]
         actions = np.stack(rollout[:, 1], 0)[0][0]
@@ -60,6 +78,8 @@ class Worker(object):
                      self.local_AC.actions: actions,
                      self.local_AC.inputs: np.vstack(observations),
                      self.local_AC.advantages: advantages}
+
+        # Do the actual optimization
         value_loss, policy_loss, gradient_norm, value_norm, _ = sess.run(
             [self.local_AC.value_loss, self.local_AC.policy_loss,
              self.local_AC.grad_norms, self.local_AC.var_norms,
@@ -71,6 +91,8 @@ class Worker(object):
                 gradient_norm, value_norm)
 
     def work(self, max_episode_length, gamma, sess, coord, saver):
+        """Does the actual work, as the name says ;) Runs the episodes"""
+
         self.local_AC.is_training = False
         env = TorcsDockerEnv(
             self.docker_client, self.name, self.docker_port, training=True)
@@ -81,6 +103,8 @@ class Worker(object):
 
         with sess.as_default(), sess.graph.as_default():
             while not coord.should_stop():
+
+                # Update with global weights, the action A3C
                 sess.run(self.update_local_ops)
                 episode_buffer = []
                 episode_values = []
@@ -88,7 +112,7 @@ class Worker(object):
                 episode_reward = 0
                 episode_step_count = 0
 
-                # reset docker every third episode
+                # reset docker every third episode to avoid the mmemory leak
                 local_episodes = 0
                 if np.mod(local_episodes, 3) == 0:
                     observation = env.reset(relaunch=True)
@@ -97,15 +121,12 @@ class Worker(object):
                 state_t = obs_to_state(observation)
                 done = False
 
-                epsilon = 1
-
                 while not done:
 
+                    # Get the action and apply it to the environment
                     action_t, value_t = sess.run(
                         [self.local_AC.action, self.local_AC.value],
                         feed_dict={self.local_AC.inputs: [state_t]})
-
-                    epsilon -= 1.0 / max_episode_length
 
                     observation, reward_t, done, _ = env.step(action_t[0][0])
 
@@ -115,6 +136,7 @@ class Worker(object):
                     else:
                         state_t1 = state_t
 
+                    # Store the episode
                     episode_buffer.append(
                         [state_t, action_t, reward_t, state_t1, done,
                          value_t[0, 0]])
@@ -142,6 +164,8 @@ class Worker(object):
 
                     self.summary_writer.flush()
 
+                    # If the episode buffer is full, flush it and update
+                    # the network weights
                     if (len(episode_buffer) == 30 and not done
                             and episode_step_count != max_episode_length-1):
 
@@ -164,6 +188,7 @@ class Worker(object):
                     np.mean(episode_values))
 
                 if len(episode_buffer) != 0:
+                    # Train the netowkr use the recent episodes
                     (value_loss, policy_loss, gradient_norm,
                      variable_norm) = self.train(
                         episode_buffer, sess, gamma, 0.0)
@@ -220,6 +245,7 @@ class Worker(object):
 
 
 class A3C(object):
+    """A3C algorithm for use with gym_torcs_docker"""
 
     def __init__(
             self, docker_client, docker_start_port=3101,
@@ -229,8 +255,8 @@ class A3C(object):
 
         self.docker_start_port = docker_start_port
 
-        self.max_episode_length = 4000
-        self.gamma = .99
+        self.max_episode_length = 4000  # how long an episode can be
+        self.gamma = .99  # discount factor
         self.logdir = logdir
         self.modeldir = modeldir
         self.state_size = 29
@@ -248,6 +274,9 @@ class A3C(object):
                 os.makedirs(self.modeldir)
 
     def train(self, num_workers, load_model=False):
+        """ Train the the network with number of specified workers,
+        results will be stored in the model directory
+        """
         with tf.device("/cpu:0"):
 
             trainer = tf.train.AdamOptimizer(learning_rate=1e-4)
@@ -276,6 +305,7 @@ class A3C(object):
             else:
                 sess.run(tf.global_variables_initializer())
 
+            # Run the workers in individual threads
             worker_threads = []
             for worker in workers:
                 t = threading.Thread(

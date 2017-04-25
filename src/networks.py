@@ -1,6 +1,23 @@
+# -*- coding: utf-8 -*-
+"""
+    rl_torcs.networks
+    ~~~~~~~~~~~~~~~~~
+
+    DESCRIPTION
+        Classes used to define asynchronous reinforcement learning algorithms
+        for the use with gym_torcs_docker
+
+
+    :copyright: (c) 2017 by Bastian Niebel.
+"""
+
 import tensorflow as tf
 
+
 class Network(object):
+    """Base class for the neural networks defining the number of hidden units 
+    and the state, action space size
+    """
 
     HIDDEN1_UNITS = 300
     HIDDEN2_UNITS = 600
@@ -13,6 +30,9 @@ class Network(object):
 
 
 class ActorCriticBaseNetwork(Network):
+    """Base class for the actor critic network. sdefining the number of hidden units and the state, action
+    space size
+    """
 
     def __init__(self, state_size, action_size, trainer, tau):
         super(ActorCriticBaseNetwork, self).__init__(
@@ -34,6 +54,8 @@ class ActorCriticBaseNetwork(Network):
 
 
 class CriticNetwork(ActorCriticBaseNetwork):
+    """ The critic network, implementing Q learning for estimating the Q
+    function"""
 
     def __init__(self, state_size, action_size, trainer, tau):
 
@@ -122,6 +144,7 @@ class CriticNetwork(ActorCriticBaseNetwork):
             feed_dict={self.state: states, self.action: actions})[0]
 
     def train(self, sess, expected_critic, states, actions):
+        # Allow for batch normalization
         self.is_training = True
         loss, _ = sess.run(
             [self.loss, self.optimize],
@@ -133,6 +156,9 @@ class CriticNetwork(ActorCriticBaseNetwork):
 
 
 class ActorNetwork(ActorCriticBaseNetwork):
+    """Actor network, the training is performed using the estimated gradients
+    of the policy with respect to the actions from the critic
+    """
 
     def __init__(self, state_size, action_size, trainer, tau):
 
@@ -210,6 +236,7 @@ class ActorNetwork(ActorCriticBaseNetwork):
 
 
 class A3CNetwork(Network):
+    """Network for the A3C workers and the global network """
 
     def __init__(self, state_size, action_size, trainer, scope):
         super(A3CNetwork, self).__init__(
@@ -217,7 +244,7 @@ class A3CNetwork(Network):
         self.scope = scope
         self.is_training = False
         self._create_network()
-        if self.scope != 'global':
+        if not (self.scope == 'global'):
             self._create_train()
 
     @staticmethod
@@ -257,6 +284,8 @@ class A3CNetwork(Network):
                     inputs=s_layer2, units=2, activation=tf.nn.tanh),
                 training=self.is_training, name='policy_mu')
 
+            # clip the standard deviation to avoid numerical instabilites in
+            # the log probabilities
             self.policy_sd = tf.clip_by_value(
                 tf.layers.batch_normalization(
                     tf.layers.dense(
@@ -272,6 +301,7 @@ class A3CNetwork(Network):
             self.normal_dist = tf.contrib.distributions.Normal(
                 self.policy_mu, self.policy_sd, name='normal_dist')
 
+            # Clip the sample from the normal to avoid unallowed actions
             self.action = tf.clip_by_value(
                 self.normal_dist.sample(1),
                 [-1.0]*self.action_size, [1.0]*self.action_size,
@@ -287,6 +317,7 @@ class A3CNetwork(Network):
             self.advantages = tf.placeholder(
                 shape=[None], dtype=tf.float32, name='advantages')
 
+            # Determine the policy loss using the actions and the advantage
             log_prob = self.normal_dist.log_prob(self.actions)
             exp_v = tf.transpose(
                 tf.multiply(tf.transpose(log_prob), self.advantages))
@@ -316,5 +347,5 @@ class A3CNetwork(Network):
     def predict(self, sess, state):
         action = sess.run(
             self.action,
-            feed_dict={self.inputs: [state]})
+            feed_dict={self.inputs: state})
         return action[0]

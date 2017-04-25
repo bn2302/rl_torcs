@@ -1,3 +1,14 @@
+# -*- coding: utf-8 -*-
+"""
+    rl_torcs.ddpg
+    ~~~~~~~~~~~~~
+
+    Deep deterministic policy gradient algorithm for the use with
+    gym_torcs_docker
+
+    :copyright: (c) 2017 by Bastian Niebel.
+"""
+
 import os
 import random
 import numpy as np
@@ -10,6 +21,7 @@ from numpy.random import seed, randn
 
 
 class ReplayBuffer(object):
+    """Container for the results of the rcent episodes """
 
     def __init__(self, buffer_size):
         self.buffer_size = buffer_size
@@ -46,6 +58,7 @@ class ReplayBuffer(object):
 
 
 class DDPG(object):
+    """Implementation of the deep deterministic policy gradient algorithm"""
 
     def __init__(
             self, docker_client, name='worker', port=3101,
@@ -58,7 +71,7 @@ class DDPG(object):
 
         self.buffer_size = 100000
         self.batch_size = 32
-        self.gamma = 0.99
+        self.gamma = 0.99  # disocunt factor
         self.tau = 0.001  # Target Network HyperParameters
         self.lra = 0.0001  # Learning rate for Actor
         self.lrc = 0.001  # Lerning rate for Critic
@@ -121,6 +134,7 @@ class DDPG(object):
 
     @staticmethod
     def addOUNoise(a, epsilon):
+        """Adds noise from an Ornstein Uhlenbeck process to the actions"""
 
         def ou_func(x, mu, theta, sigma):
             return theta * (mu - x) + sigma * randn(1)
@@ -153,6 +167,7 @@ class DDPG(object):
 
             for i in range(self.episode_count):
 
+                # collect the recent rewards
                 recent_rewards = np.ones(1000) * 1e9
                 print("Episode : " + str(i) + " Replay Buffer "
                       + str(self.buff.count()))
@@ -167,6 +182,9 @@ class DDPG(object):
 
                 for j in range(self.max_steps):
                     loss = 0
+
+                    # reduce the effect of the OU process with progess in the
+                    # algorithm
                     self.epsilon -= 1.0 / self.explore
 
                     action_t = self.actor.predict(
@@ -176,8 +194,8 @@ class DDPG(object):
                         DDPG.addOUNoise(action_t[0], self.epsilon))
                     state_t1 = obs_to_state(observation)
 
+                    # check if we need to terminate, bc the agent is stuck
                     recent_rewards[j % 1000] = reward_t
-
                     if (check_stuck and np.median(recent_rewards) < 1.0
                             and i/self.episode_count < 0.5):
                         break

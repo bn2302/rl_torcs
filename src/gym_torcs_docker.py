@@ -1,3 +1,17 @@
+# -*- coding: utf-8 -*-
+"""
+    rl_torcs.gym_torcs_docker
+    ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    DESCRIPTION
+
+        gym torcs environment using docker. allows for parallel execution.
+
+        Based on https://github.com/ugo-nama-kun/gym_torcs
+
+    :copyright: (c) 2017 by Bastian Niebel
+"""
+
 import os
 import random
 import collections as col
@@ -18,6 +32,7 @@ class TorcsDockerEnv(object):
 
        based on gym_torcs, here we only consider vision with throttle as
        input
+
     '''
 
     def __init__(
