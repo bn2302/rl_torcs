@@ -38,11 +38,28 @@ container must be stopped using `docker stop NAME `. To list the running
 containers please use  `docker ps -l -a`
 
 ## Monitor the training
-To monitor the training process, please connect to the containers using the
-following command
+To monitor the training process, please connect to the containers, go into the
+`logs` directory and start tensorboard using 
+
+	tensorboard --logdir=a3c_0:'./a3c/train_0/',a3c_1:'./a3c/train_1',a3c_2:'./a3c/train_2',a3c_3:'./a3c/train_3',a3c_4:'./a3c/train_4/',a3c_5:'./a3c/train_5',a3c_6:'./a3c/train_6',a3c_7:'./a3c/train_7',ddpg_0:'./ddpg_0',ddpg_1:'./ddpg_1',dddpg_ref:'./ddpg_ref',ddpg_2:'./ddpg_2/'
+
+Tensorboard can be accessed via port 6006 from a browser. When connecting to an
+AWS instance via ssh, forward the port with `-L 6006:localhost:6006`. Then tensorboard can be opened in a browser using `http://localhost:6006/`
 
 ## Start the testing
+Testing is done in the Jupyter notebook test.ipynb .
+To start the jupyter server run the following command from the rl_torcs main directory
+
+	jupyter server --allow-root
+
+Jupyter can be accessed via port 8888 from a browser. When connecting to an
+AWS instance via ssh, forward the port with `-L 6006:localhost8888` 
 
 
+##References
 
+https://github.com/awjuliani/DeepRL-Agents/blob/master/A3C-Doom.ipynb as the basis for the A3c implementation.
 
+https://github.com/yanpanlau/DDPG-Keras-Torcs as the basis for the DDPG.
+
+https://github.com/plumbee/nvidia-hw-accelerated-box as the basis for the setup scripts.
