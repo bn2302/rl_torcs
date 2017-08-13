@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export NVIDIA_DRIVER=375.51
+export NVIDIA_DRIVER=384.59
 export NVIDIADOCKER_VERSION=1.0.1
 export DOCKER_COMPOSE=1.15.0
 export VGL_VERSION=2.5.2
@@ -9,6 +9,7 @@ export TURBOVNC_VERSION=2.0.1
 
 # Install necessary ubuntu packages
 apt-get update
+apt-get upgrade -y
 apt-get install -y \
     build-essential \
     apt-transport-https \
