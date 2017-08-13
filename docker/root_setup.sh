@@ -1,10 +1,24 @@
 #!/bin/bash
+
+export NVIDIA_DRIVER=375.51
+export NVIDIADOCKER_VERSION=1.0.1
+export DOCKER_COMPOSE=1.15.0
+export VGL_VERSION=2.5.2
+export LIBJPEG_VERSION=1.4.2
+export TURBOVNC_VERSION=2.0.1
+
+# Install necessary ubuntu packages
 apt-get update
+apt-get install -y \
+    build-essential \
+    apt-transport-https \
+    ca-certificates \
+    curl \
+    software-properties-common \
+    xorg
 
-apt-get install -y xorg
-
-apt-get install build-essential -y
-curl -O http://us.download.nvidia.com/XFree86/Linux-x86_64/375.51/NVIDIA-Linux-x86_64-375.51.run
+# Nvidia driver
+curl -O http://us.download.nvidia.com/XFree86/Linux-x86_64/${NVIDIA_DRIVER}/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER}.run
 chmod +x ./NVIDIA-Linux-x86_64-*.run
 ./NVIDIA-Linux-x86_64-*.run -q -a -n -X -s
 rm ./NVIDIA-Linux-x86_64-*.run
@@ -12,19 +26,23 @@ rm ./NVIDIA-Linux-x86_64-*.run
 cp xorg.conf /etc/X11/xorg.conf
 
 # Docker
-apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
-apt-add-repository 'deb https://apt.dockerproject.org/repo ubuntu-xenial main'
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
+
+add-apt-repository \
+   "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
+   $(lsb_release -cs) \
+   stable"
+
 apt-get update -y
-apt-get install -y docker-engine
+apt-get install -y docker-ce
 usermod -aG docker ubuntu
 
 # Nvidia docker
-export NVIDIADOCKER_VERSION=1.0.1
 wget -P /tmp https://github.com/NVIDIA/nvidia-docker/releases/download/v${NVIDIADOCKER_VERSION}/nvidia-docker_${NVIDIADOCKER_VERSION}-1_amd64.deb
 dpkg -i /tmp/nvidia-docker*.deb && rm /tmp/nvidia-docker*.deb
 
 # Docker compose
-curl -L https://github.com/docker/compose/releases/download/1.8.1/docker-compose-`uname -s`-`uname -m` > /usr/local/bin/docker-compose
+curl -L https://github.com/docker/compose/releases/download/$(DOCKER_COMPOSE)/docker-compose-`uname -s`-`uname -m` > /usr/local/bin/docker-compose
 chmod +x /usr/local/bin/docker-compose
 rm -f /usr/bin/docker-compose
 ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
@@ -34,7 +52,6 @@ apt-get install python-pip -y
 pip install --upgrade pip
 pip install nvidia-docker-compose
 
-export VGL_VERSION=2.5.2
 wget http://downloads.sourceforge.net/project/virtualgl/${VGL_VERSION}/virtualgl_${VGL_VERSION}_amd64.deb
 dpkg -i virtualgl*.deb && rm virtualgl*.deb
 
@@ -46,12 +63,8 @@ dpkg -i virtualgl*.deb && rm virtualgl*.deb
 apt-get install -y mesa-utils
 
 # install turbovnc
-# can be updated to 1.5.1
-export LIBJPEG_VERSION=1.4.2
 wget http://downloads.sourceforge.net/project/libjpeg-turbo/${LIBJPEG_VERSION}/libjpeg-turbo-official_${LIBJPEG_VERSION}_amd64.deb
 dpkg -i libjpeg-turbo-official*.deb && rm libjpeg-turbo-official*.deb
-# can be updated to 2.1
-export TURBOVNC_VERSION=2.0.1
 wget http://downloads.sourceforge.net/project/turbovnc/${TURBOVNC_VERSION}/turbovnc_${TURBOVNC_VERSION}_amd64.deb
 dpkg -i turbovnc*.deb && rm turbovnc*.deb
 
