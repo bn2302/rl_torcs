@@ -1,8 +1,12 @@
 # Reinforcement learning with docker and torcs
 
 ## Installation
+Currently this section is updated.
+
+NOTE: The gpu busid needs to be converted from hex to decimal, i.e. the g3 instance with a busid of 0:1e:0 becomes 0:30:0
 
 The Torcs reinforcement learning environment is based on an Amazon EC2 g2.2xlarge instance running Ubuntu 16.04. 
+
 
 To setup the environment, the following commands have to be executed from a shell:
 
